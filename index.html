@@ -503,7 +503,7 @@ function analyze(ds){
   if(B.hrMax.n>=7){
     const sp=V.filter(v=>fin(v.hrMax)&&v.hrMax>B.hrMax.med+20&&(!amapGet(ds,v.date)||amapGet(ds,v.date).steps<(B.steps.med||Infinity)));
     F.spike=sp.map(v=>v.date);
-    if(sp.length)out.push({id:'spike',level:'info',title:'Unexplained heart-rate peak',text:`${sp.map(v=>{const a=amapGet(ds,v.date);return `${fmtWD(v.date)}: max ${fmtNum(v.hrMax)} bpm${a?` with only ${fmtInt(a.steps)} steps`:''}`;}).join('; ')}. Your typical daily maximum is about ${fmtNum(B.hrMax.med)} bpm. Stress, caffeine, alcohol, a hot shower or an infection can all do this.`,dates:sp.map(v=>v.date)});
+    if(sp.length)out.push({id:'spike',level:'info',title:'Unexplained heart-rate peak',text:`${sp.map(v=>{const a=amapGet(ds,v.date);return `${fmtWD(v.date)}: max ${fmtNum(v.hrMax)} bpm${a?` on a day with ${fmtInt(a.steps)} steps`:''}`;}).join('; ')}. Your typical daily maximum is about ${fmtNum(B.hrMax.med)} bpm. Stress, caffeine, alcohol, a hot shower or an infection can all do this.`,dates:sp.map(v=>v.date)});
   }
   const latD=R.filter(r=>r.lat>45);F.latency=latD.map(r=>({date:r.date,evening:r.evening,lat:r.lat}));
   if(latD.length)out.push({id:'latency',level:'info',title:'Long time to fall asleep',text:`${latD.map(r=>`${fmtDate(r.evening)} evening: ${Math.round(r.lat)} min`).join('; ')} (typical: ${Math.round(B.lat.med)} min).`,dates:latD.map(r=>r.date)});
@@ -651,16 +651,16 @@ return {parseCSV,buildDataset,analyze,reportMarkdown,corrOf,spearman,baseline,st
 // DEMO-START
 const DEMO={name:'Demo',from:'2026-08-27',to:'2026-09-12',
 activity:`Date,Steps,Calories(kcal)
-2026-09-02,408,698
-2026-09-03,5724,3114
-2026-09-04,3875,3034
-2026-09-05,2021,2680
-2026-09-06,1568,2797
-2026-09-07,3299,2896
-2026-09-08,9528,3925
-2026-09-09,3667,3050
-2026-09-10,2999,2924
-2026-09-11,1732,2739
+2026-09-02,7450,3034
+2026-09-03,8200,3083
+2026-09-04,7100,3012
+2026-09-05,10150,3210
+2026-09-06,7000,3005
+2026-09-07,8020,3071
+2026-09-08,12300,3350
+2026-09-09,7320,3026
+2026-09-10,9980,3199
+2026-09-11,8450,3099
 `,
 sleep:`Start Time,End Time,Falling Asleep Time,Wake-up time,Sleep Time Ratio(%),Time Asleep(min),Sleep Stages - Awake(min),Sleep Stages - REM(min),Sleep Stages - Light Sleep(min),Sleep Stages - Deep Sleep(min)
 2026-09-02 23:33:17,2026-09-03 06:40:48,2026-09-02 23:53:18,2026-09-03 06:33:18,88.42%,378,32,76,193,109
