@@ -4,7 +4,9 @@ Upload the data export from your RingConn Gen 3 ring (`data.zip` or the three CS
 
 - **Runs entirely in your browser.** No backend, no uploads, no tracking. The only external requests are the Google Fonts stylesheet and the JSZip library from cdnjs.
 - **Inputs:** `Activity-*.csv`, `Sleep-*.csv`, `Vital Signs-*.csv` (detected automatically, zip subfolders are fine).
-- **What you get:** personal baselines, a day timeline, Spearman correlations with n and permutation p-values, rule-based anomaly hints, a coaching plan with one experiment, and app ideas derived from your data.
+- **What you get:** personal baselines with usual-range bands and median lines on every trend (diamonds mark values outside your range in the unfavorable direction), a day timeline with a shared crosshair, Spearman correlations with n and permutation p-values, rolling 7-day SpO2 rule, rule-based anomaly hints, a coaching plan, a before/after experiment tracker, a weekly recap and app ideas derived from your data.
+- **Context log:** tap a day to tag caffeine, alcohol, training, symptoms and add a note. Stored only in your browser (localStorage), shown as markers on the timeline.
+- **Guardrails:** scatter plots for sleep onset and steps unlock at 14 points, step targets only after 21+ days with a real relationship, partial days are never scored, data-quality chips and P/U/G badges mark gaps.
 - **Demo data** on first load is synthetic.
 
 Wellness insights from consumer-ring data, not medical advice.

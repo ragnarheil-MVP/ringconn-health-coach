@@ -189,6 +189,32 @@ textarea{resize:vertical;min-height:38px}
 #modal .box{background:var(--surface);border-radius:12px;padding:18px;max-width:640px;width:100%;display:flex;flex-direction:column;gap:10px}
 #modal textarea{min-height:260px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
 #toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:999px;font-size:13.5px;z-index:70}
+
+.btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.qchips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}
+.legend i.badge{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--ink2);display:grid;place-items:center;font-style:normal;font-size:9px;font-weight:700;color:var(--ink2);background:var(--surface)}
+.legend i.badge.note{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.legend i.dia{background:var(--crit);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);width:11px;height:11px;border-radius:0}
+.legend i.dash{width:16px;height:0;border-top:2px dashed;background:none!important;border-radius:0}
+.ctx{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.ctx h4{margin:0;font-size:14px}
+.ctx .ask{background:var(--accent-soft);border-radius:8px;padding:8px 12px;font-size:14px}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{appearance:none;border:1px solid var(--axis);background:transparent;border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer;color:var(--ink2)}
+.tag[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:600}
+.tag:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.lock p{margin-top:8px;color:var(--ink2);font-size:14px}
+.lock .btn{margin-top:10px}
+.meter{height:8px;border-radius:4px;background:var(--grid);overflow:hidden;margin-top:8px}
+.meter i{display:block;height:100%;background:var(--s1)}
+.baGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:12px;margin-top:14px}
+.ba{margin:0;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bg)}
+.ba figcaption{font-size:13px;margin-bottom:4px}
+.ba .dl{font-size:12.5px;color:var(--ink2)}
+.ba svg text{fill:var(--muted);font-size:10.5px}
+.verdict{margin:12px 0 4px}
+.exprow{display:flex;flex-direction:column;gap:2px;font-size:14px;margin-top:10px}
+.banner .btnrow{margin-top:8px}
 @media (max-width:560px){ .top h1{font-size:25px} .tv{font-size:26px} .card{padding:14px} }
 @media (prefers-reduced-motion: reduce){ *{transition:none!important} }
 </style>
@@ -247,6 +273,7 @@ const median=a=>{const s=a.filter(fin).sort((x,y)=>x-y);if(!s.length)return NaN;
 const mad=(a,med)=>median(a.filter(fin).map(v=>Math.abs(v-med)));
 const sd=a=>{const f=a.filter(fin);if(f.length<2)return 0;const m=mean(f);return Math.sqrt(f.reduce((s,v)=>s+(v-m)**2,0)/(f.length-1));};
 const fmtNum=v=>!fin(v)?'–':(Math.abs(v-Math.round(v))<0.05?String(Math.round(v)):v.toFixed(1));
+const fmtDur=min=>min<60?`${Math.round(min)} min`:fmtHM(min);
 const fmtHM=min=>{if(!fin(min))return '–';const t=Math.round(min);return `${Math.floor(t/60)} h ${pad(t%60)} min`;};
 const fmtClock=h=>{if(!fin(h))return '–';const t=Math.round((((h%24)+24)%24)*60)%1440;return `${pad(Math.floor(t/60))}:${pad(t%60)}`;};
 const fmtInt=v=>fin(v)?Math.round(v).toLocaleString('en-US'):'–';
@@ -376,15 +403,17 @@ function buildDataset(raw,meta={}){
   const act=buildActivity(rowsOf('activity')),vit=buildVitals(rowsOf('vitals')),all=buildNights(rowsOf('sleep'));
   if(!act.length&&!vit.length&&!all.length)throw new Error('No readable rows found. Make sure the zip contains the Activity, Sleep and Vital Signs CSV files from the RingConn app.');
   const vmap=Object.fromEntries(vit.map(v=>[v.date,v])),amap=Object.fromEntries(act.map(a=>[a.date,a]));
-  const det=all.length&&vit.length?detectLag(all,vmap):{lag:0,scores:{}};
-  const rows=attach(all,vmap,amap,det.lag);
+  const partialSet=new Set(act.filter(a=>a.partial).map(a=>a.date));
+  const vclean=Object.fromEntries(vit.filter(v=>!partialSet.has(v.date)).map(v=>[v.date,v]));
+  const det=all.length&&vit.length?detectLag(all,vclean):{lag:0,scores:{}};
+  const rows=attach(all,vclean,amap,det.lag);
   const dates=[...act.map(a=>a.date),...vit.map(v=>v.date),...rows.map(r=>r.date)].sort();
   const dq=[];
   const found=[];if(act.length)found.push(`Activity (${act.length} days)`);if(all.length)found.push(`Sleep (${all.length} nights)`);if(vit.length)found.push(`Vital Signs (${vit.length} days)`);
   const missing=[];if(!act.length)missing.push('Activity');if(!all.length)missing.push('Sleep');if(!vit.length)missing.push('Vital Signs');
   dq.push({lvl:missing.length?'warn':'ok',text:`Found ${found.join(', ')}.${missing.length?` Missing: ${missing.join(', ')}, so analyses that need it are skipped.`:''}`});
   const partial=act.filter(a=>a.partial);
-  if(partial.length)dq.push({lvl:'warn',text:`${partial.map(a=>`${fmtDate(a.date)} (${a.steps} steps, ${a.kcal} kcal)`).join('; ')} look${partial.length>1?'':'s'} partial and ${partial.length>1?'are':'is'} excluded from activity stats.`});
+  if(partial.length)dq.push({lvl:'warn',text:`${partial.map(a=>`${fmtDate(a.date)} (${a.steps} steps, ${a.kcal} kcal)`).join('; ')} look${partial.length>1?'':'s'} partial and ${partial.length>1?'are':'is'} excluded from activity and vitals stats.`});
   if(all.length){
     const extra=all.reduce((s,n)=>s+(n.others?n.others.length:0),0);
     const unpaired=rows.filter(r=>!r.paired);
@@ -394,7 +423,7 @@ function buildDataset(raw,meta={}){
     if(lateStarts.length)t+=` ${lateStarts.length} night${lateStarts.length>1?'s start':' starts'} after midnight and still belong${lateStarts.length>1?'':'s'} to the previous evening.`;
     if(extra)t+=` ${extra} extra sleep session${extra>1?'s':''} on the same wake-up day (naps) kept out of the main analysis.`;
     dq.push({lvl:'ok',text:t});
-    if(unpaired.length&&vit.length)dq.push({lvl:'warn',text:`${unpaired.length} night${unpaired.length>1?'s':''} (→ ${unpaired.map(r=>fmtDate(r.date)).join(', ')}) ha${unpaired.length>1?'ve':'s'} no matching Vital Signs row and ${unpaired.length>1?'are':'is'} left out of paired analyses.`});
+    if(unpaired.length&&vit.length)dq.push({lvl:'warn',text:`${unpaired.length} night${unpaired.length>1?'s':''} (→ ${unpaired.map(r=>fmtDate(r.date)).join(', ')}) ha${unpaired.length>1?'ve':'s'} no usable Vital Signs row (missing or partial day) and ${unpaired.length>1?'are':'is'} left out of paired analyses.`});
     const bad=all.filter(n=>!n.sumOk);
     dq.push({lvl:bad.length?'warn':'ok',text:bad.length?`Stage minutes do not add up to Time Asleep on ${bad.length} night${bad.length>1?'s':''}.`:'REM + Light + Deep equals Time Asleep on every night.'});
   }
@@ -402,7 +431,7 @@ function buildDataset(raw,meta={}){
     const s=det.scores,f=l=>s[l]?s[l].score.toFixed(2):'n/a';
     dq.push({lvl:'ok',text:`Vital Signs date vs. night: lag ${det.lag} fits best (consistency score ${f(det.lag)}; lag −1: ${f(-1)}, lag 0: ${f(0)}, lag +1: ${f(1)}).`});
   }
-  return {meta,act,vit,nights:all,rows,vmap,amap,lag:det.lag,lagScores:det.scores,dq,from:dates[0],to:dates[dates.length-1]};
+  return {meta,act,vit,nights:all,rows,vmap,amap,partial:[...partialSet],lag:det.lag,lagScores:det.scores,dq,from:dates[0],to:dates[dates.length-1]};
 }
 
 // ---- analysis ----
@@ -449,7 +478,7 @@ const consecutive=ds=>{const out=[];let run=[];ds.slice().sort().forEach(d=>{if(
 
 function analyze(ds){
   const A={ds,base:{},flags:{}},B=A.base;
-  const R=ds.rows,V=ds.vit,Act=ds.act.filter(a=>!a.partial);
+  const R=ds.rows,Act=ds.act.filter(a=>!a.partial),PS=new Set(ds.partial||[]),V=ds.vit.filter(v=>!PS.has(v.date));
   const S=(arr,k)=>arr.map(r=>r[k]);
   ['tst','deep','rem','light','awake','eff','lat','onset','wake24','deepPct','remPct'].forEach(k=>B[k]=baseline(S(R,k)));
   ['hr','hrMin','hrMax','spAvg','spMin','spMax','hrv','hrvMin','hrvMax'].forEach(k=>B[k]=baseline(S(V,k)));
@@ -472,8 +501,11 @@ function analyze(ds){
 
   // correlations
   A.corr=PAIRS.map(p=>{const c=corrOf(R,p.x,p.y);return {pair:p,c,conf:confOf(c),text:c.insufficient?`Not enough data (n=${c.n}, needs 7 or more).`:interpret(p,c)};});
-  A.topCorr=A.corr.filter(x=>!x.c.insufficient&&x.pair.id!=='hr-hrv').sort((a,b)=>Math.abs(b.c.rho)-Math.abs(a.c.rho)).slice(0,6);
+  A.corrRanked=A.corr.filter(x=>!x.c.insufficient&&x.pair.id!=='hr-hrv').sort((a,b)=>Math.abs(b.c.rho)-Math.abs(a.c.rho));
+  A.fixedIds=['onset-rem','onset-hrv','steps-deep'];
+  A.topCorr=A.corrRanked.filter(x=>!A.fixedIds.includes(x.pair.id)).slice(0,6);
   const cget=id=>A.corr.find(x=>x.pair.id===id);A.cget=cget;
+  const sd2=cget('steps-deep');A.stepsGate={n:sd2.c.n,rho:sd2.c.insufficient?NaN:sd2.c.rho,ok:!sd2.c.insufficient&&sd2.c.n>=21&&sd2.c.rho>=0.3};
 
   // outlier night
   const badKeys=[['tst',-1],['deep',-1],['hr',1],['hrv',-1],['spMin',-1]];
@@ -496,10 +528,14 @@ function analyze(ds){
   const shortN=R.filter(r=>r.tst<360||r.deep<60).map(r=>r.date);F.shortNight=shortN;
   if(shortN.length)out.push({id:'short',level:'watch',title:'Short or shallow night',text:`Sleep time under 6 h or deep sleep under 60 min on ${shortN.length} night${shortN.length>1?'s':''}. ${R.filter(r=>shortN.includes(r.date)).map(r=>`${fmtDate(r.date)}: ${fmtHM(r.tst)}, deep ${fmtNum(r.deep)} min`).join('; ')}.`,dates:shortN});
   const lowSp=V.filter(v=>fin(v.spMin)&&v.spMin<90);
-  F.lowSpo2={days:lowSp.map(v=>v.date),n:lowSp.length,total:V.filter(v=>fin(v.spMin)).length,min:lowSp.length?Math.min(...lowSp.map(v=>v.spMin)):NaN};
-  if(lowSp.length>=3)out.push({id:'spo2',level:'watch',title:'Repeated low SpO₂ readings',
-    text:`The lowest SpO₂ was under 90 % on ${lowSp.length} of ${F.lowSpo2.total} days (lowest ${fmtNum(F.lowSpo2.min)} %), while the daily average stayed at ${fmtNum(B.spAvg.min)}–${fmtNum(B.spAvg.max)} %. Single dips are often a sensor or finger-position artifact. Several in a row are worth a second measurement.`,
-    dates:lowSp.map(v=>v.date),doctor:'Check the ring fit (snug, not tight) and try a fingertip pulse oximeter at night once or twice. If low readings persist for weeks, or you have loud snoring, breathing pauses, morning headaches or daytime sleepiness, talk to a doctor.'});
+  const vm=Object.fromEntries(V.map(v=>[v.date,v]));
+  const roll=V.filter(v=>fin(v.spMin)).map(v=>{let c=0,t=0;for(let k=0;k<7;k++){const w=vm[addDays(v.date,-k)];if(w&&fin(w.spMin)){t++;if(w.spMin<90)c++;}}return {date:v.date,count:c,total:t};});
+  const worst=roll.reduce((a,r)=>!a||r.count>a.count?r:a,null),latest=roll[roll.length-1]||null;
+  F.lowSpo2={days:lowSp.map(v=>v.date),n:lowSp.length,total:roll.length,min:lowSp.length?Math.min(...lowSp.map(v=>v.spMin)):NaN,roll,worst:worst?worst.count:0,worstDate:worst?worst.date:null,latest,flag:!!worst&&worst.count>=3,latestFlag:!!latest&&latest.count>=3};
+  if(F.lowSpo2.flag){const lf=F.lowSpo2.latestFlag;
+    out.push({id:'spo2',level:lf?'watch':'info',title:'Repeated low SpO₂ readings',
+      text:`${lf?`In the 7 days up to ${fmtDate(latest.date)} the lowest SpO₂ was under 90 % on ${latest.count} of ${latest.total} days`:`The worst 7-day window (up to ${fmtDate(F.lowSpo2.worstDate)}) had ${F.lowSpo2.worst} days under 90 %, the latest 7 days had ${latest?latest.count:0}`}. Overall ${lowSp.length} of ${roll.length} days were under 90 % (lowest ${fmtNum(F.lowSpo2.min)} %) while the daily average stayed at ${fmtNum(B.spAvg.min)}–${fmtNum(B.spAvg.max)} %. Single dips are often a sensor or finger-position artifact. Several in one week are worth a second measurement.`,
+      dates:lowSp.map(v=>v.date),doctor:'Check the ring fit (snug, not tight) and try a fingertip pulse oximeter at night once or twice. If low readings persist for weeks, or you have loud snoring, breathing pauses, morning headaches or daytime sleepiness, talk to a doctor.'});}
   if(B.hrMax.n>=7){
     const sp=V.filter(v=>fin(v.hrMax)&&v.hrMax>B.hrMax.med+20&&(!amapGet(ds,v.date)||amapGet(ds,v.date).steps<(B.steps.med||Infinity)));
     F.spike=sp.map(v=>v.date);
@@ -523,14 +559,58 @@ function analyze(ds){
     if(F.lowActivity)out.push({id:'activity',level:'info',title:'Low activity',text:`Average ${fmtInt(F.avgSteps)} steps per day; ${F.days6k} of ${Act.length} full days reached 6,000.`,dates:[]});}
   const order={check:0,watch:1,info:2};A.anomalies=out.sort((a,b)=>order[a.level]-order[b.level]);
   F.medianOnset=B.onset.med;F.medianTst=B.tst.med;
+  A.flagMap={};A.anomalies.forEach(a=>{if(!['strain','short','spike','latency'].includes(a.id))return;(a.dates||[]).forEach(d=>{(A.flagMap[d]=A.flagMap[d]||[]).push(a.title);});});
+  const gaps=[];for(let d=ds.from;d&&d<=ds.to;d=addDays(d,1)){if(!ds.amap[d]&&!ds.vmap[d]&&!R.some(r=>r.date===d))gaps.push(d);}
+  A.quality={partial:(ds.partial||[]).slice(),unpaired:R.filter(r=>!r.paired).map(r=>r.date),gaps};
 
   A.summary=makeSummary(A);
   A.coach=makeCoach(A);
   A.ideas=makeIdeas(A);
+  A.weekly=weeklyRecap(A);
   return A;
 }
 const amapGet=(ds,d)=>ds.amap[d]&&!ds.amap[d].partial?ds.amap[d]:null;
 
+const judge=(delta,dir,sigma)=>Math.abs(delta)<=Math.max(0.35*sigma,1e-9)?'similar':(delta*dir>0?'better':'worse');
+function weeklyRecap(A){
+  const R=A.ds.rows,B=A.base;if(R.length<8)return null;
+  const last=R.slice(-7),prev=R.slice(-14,-7);if(prev.length<3)return null;
+  const avg=(arr,k)=>mean(arr.map(r=>r[k]).filter(fin));
+  const r0=v=>String(Math.round(v));
+  const defs=[['tst','Sleep time',fmtHM,1,'tst',fmtDur],['deep','Deep sleep (min)',fmtNum,1,'deep',fmtNum],['rem','REM (min)',fmtNum,1,'rem',fmtNum],['onset','Sleep onset',fmtClock,-1,'onset',v=>fmtDur(v*60)],['lat','Time to fall asleep (min)',r0,-1,'lat',r0],['hr','Avg HR (bpm)',fmtNum,-1,'hr',fmtNum],['hrv','Avg HRV (ms)',fmtNum,1,'hrv',fmtNum],['spMin','Lowest SpO₂ (%)',fmtNum,1,'spMin',fmtNum],['stepsPrev','Steps per day',fmtInt,1,'steps',fmtInt]];
+  const rows=defs.map(([k,label,f,dir,bk,df])=>{const a=avg(prev,k),b=avg(last,k);if(!fin(a)||!fin(b))return null;
+    const sg=(B[bk]&&B[bk].sigma)||Math.abs(a)*0.05||1,word=judge(b-a,dir,sg);
+    return {key:k,label,prev:f(a),last:f(b),word,arrow:word==='similar'?'=':(b>a?'▲':'▼'),deltaText:(b-a<0?'−':'+')+df(Math.abs(b-a))};}).filter(Boolean);
+  const lastDate=last[last.length-1].date;let d=addDays(lastDate,1);while(dow(d)!==1)d=addDays(d,1);
+  return {rows,from:last[0].date,to:lastDate,prevFrom:prev[0].date,prevTo:prev[prev.length-1].date,nextMonday:d,nPrev:prev.length,nLast:last.length};
+}
+function defaultExpStart(A){const R=A.ds.rows;if(R.length<8)return null;return R[Math.max(3,R.length-5)].evening;}
+function evalExperiment(A,exp,start,notes={}){
+  const R=A.ds.rows,B=A.base;
+  const need=exp.kind==='steps'||exp.kind==='log'?7:5;
+  const before=R.filter(r=>r.evening<start).slice(-5),after=R.filter(r=>r.evening>=start).slice(0,need);
+  const avg=(arr,k)=>mean(arr.map(r=>r[k]).filter(fin));
+  const MD={onset:['Sleep onset',fmtClock,-1,v=>fmtDur(v*60),'onset',22],rem:['REM sleep (min)',fmtNum,1,fmtNum,'rem',0],deep:['Deep sleep (min)',fmtNum,1,fmtNum,'deep',0],hrv:['Avg HRV next morning (ms)',fmtNum,1,fmtNum,'hrv',0],tst:['Sleep time',fmtHM,1,fmtDur,'tst',0],hr:['Avg HR (bpm)',fmtNum,-1,fmtNum,'hr',0],stepsPrev:['Steps that day',fmtInt,1,fmtInt,'steps',0]};
+  const keys={onset:['onset','rem','deep','hrv'],steps:['stepsPrev','deep','hrv'],tst:['tst','hrv','deep'],log:['tst','hrv']}[exp.kind];
+  const metrics=keys.map(k=>{const [label,f,dir,df,bk,origin]=MD[k];const a=avg(before,k),b=avg(after,k),ok=fin(a)&&fin(b);const sg=(B[bk]&&B[bk].sigma)||1,word=ok?judge(b-a,dir,sg):'n/a';
+    return {key:k,label,before:a,after:b,fmt:f,origin,word,arrow:!ok||word==='similar'?'=':(b>a?'▲':'▼'),deltaText:ok?(b-a<0?'−':'+')+df(Math.abs(b-a)):'–',nb:before.length,na:after.length};});
+  let adh,out;
+  if(exp.kind==='onset'){adh={label:`Nights asleep by ${fmtClock(exp.target)}`,done:after.filter(r=>r.onset<=exp.target).length,total:after.length,need:4};
+    out={label:`Mornings with REM ≥ ${exp.remT} min and HRV ≥ ${fmtNum(exp.hrvMed)} ms`,done:after.filter(r=>r.rem>=exp.remT&&r.hrv>=exp.hrvMed).length,total:after.length,need:3};}
+  else if(exp.kind==='steps'){const act=after.filter(r=>r.stepsPrev>=exp.stepsThr);
+    adh={label:`Days with ${fmtInt(exp.stepsThr)}+ steps`,done:act.length,total:after.length,need:4};
+    out={label:`Following nights with deep sleep ≥ ${fmtNum(exp.deepMed)} min (active days)`,done:act.filter(r=>r.deep>=exp.deepMed).length,total:act.length,need:3};}
+  else if(exp.kind==='tst'){adh={label:'Nights with 7 h or more asleep',done:after.filter(r=>r.tst>=420).length,total:after.length,need:4};
+    out={label:`Mornings with HRV ≥ ${fmtNum(exp.hrvMed)} ms`,done:after.filter(r=>r.hrv>=exp.hrvMed).length,total:after.length,need:3};}
+  else{adh={label:'Days with a context note',done:after.filter(r=>notes[r.evening]).length,total:after.length,need:5};out=null;}
+  let verdict,word;
+  if(after.length<need){verdict='progress';word=`In progress: ${after.length} of ${need} nights recorded so far.`;}
+  else if(adh.done<adh.need){verdict='unfair';word='Not a fair test: the plan was followed on too few nights.';}
+  else if(!out){verdict='done';word='Complete. Compare your notes with the flagged days.';}
+  else if(out.done>=out.need){verdict='success';word='Success: the outcome criterion was met.';}
+  else{verdict='no';word='Not supported by this data: plan followed, outcome not met.';}
+  return {before,after,metrics,adh,out,verdict,word,need,start};
+}
 function outlierText(A){
   const o=A.outlier;if(!o)return '';const r=o.row,B=A.base;
   let t=`Night ending ${fmtWD(r.date)}: ${fmtHM(r.tst)} asleep, ${fmtNum(r.deep)} min deep sleep (usual ${fmtNum(B.deep.med)}), sleep onset ${fmtClock(r.onset)}. On the same day average heart rate was ${fmtNum(r.hr)} bpm (usual ${fmtNum(B.hr.med)}), HRV ${fmtNum(r.hrv)} ms (usual ${fmtNum(B.hrv.med)}) and the lowest SpO₂ ${fmtNum(r.spMin)} %.`;
@@ -545,7 +625,7 @@ function makeSummary(A){
   if(A.outlier){const r=A.outlier.row;s.push(`The standout is the night ending ${fmtWD(r.date)} (${fmtHM(r.tst)}, only ${fmtNum(r.deep)} min deep sleep), followed by the day with your highest heart rate and lowest HRV.`);}
   else if(A.strain.some(x=>x.flag)){s.push('Heart rate and HRV moved against your usual range on at least one day.');}
   else s.push('No single day stands out strongly from your own baseline.');
-  const t=A.topCorr[0];
+  const t=A.corrRanked[0];
   if(t&&Math.abs(t.c.rho)>=0.4)s.push(`The clearest link is ${FIELDS[t.pair.x].noun} with ${FIELDS[t.pair.y].noun} (ρ ${fmtRho(t.c.rho)}, n=${t.c.n}, ${t.conf} confidence), so treat it as a hypothesis to test.`);
   else s.push('No relationship between your signals is strong enough yet to rely on; more days will sharpen the picture.');
   return s;
@@ -565,9 +645,11 @@ function makeCoach(A){
   const wr=R.length?Math.max(...R.map(r=>r.wake24))-Math.min(...R.map(r=>r.wake24)):0;
   if(wr>1.5)acts.push({id:'wake',pr:2,title:'Keep your wake-up time within ±45 minutes, including weekends',how:`Aim for about ${fmtClock(B.wake24.med)} and set one fixed alarm.`,measure:'"Wake-up time" range over 7 days (goal: under 1.5 h).',why:`Wake-up ranged ${fmtClock(Math.min(...R.map(r=>r.wake24)))} to ${fmtClock(Math.max(...R.map(r=>r.wake24)))}.`});
   if(B.tst.n&&B.tst.med<420)acts.push({id:'tst',pr:3,title:'Protect a 7 h 30 min sleep window on 5 nights',how:`Your median is ${fmtHM(B.tst.med)}. Moving bedtime earlier is more reliable than sleeping in.`,measure:'Time Asleep of 420 min or more on at least 5 of 7 nights.',why:`Median sleep time ${fmtHM(B.tst.med)}; ${R.filter(r=>r.tst<420).length} of ${R.length} nights under 7 h.`});
-  if(F.lowActivity){const tg=Math.ceil((F.avgSteps+2000)/500)*500;
-    acts.push({id:'steps',pr:3+(cStepsDeep&&!cStepsDeep.c.insufficient&&cStepsDeep.c.rho>0.3?1:0),title:`Reach ${fmtInt(tg)} steps on 4 days next week`,how:'Add two 15-minute walks (after lunch and after work). Keep one day easy.',measure:'Steps per day in the Activity file.',why:`Average ${fmtInt(F.avgSteps)} steps; ${F.days6k} of ${F.actDays} full days reached 6,000.`});}
-  if(F.lowSpo2.n>=3)acts.push({id:'spo2',pr:2,title:'Verify the low SpO₂ readings once',how:'Wear the ring snug on the same finger and take a fingertip pulse-oximeter reading on two nights.',measure:'Compare "Min. Spo2" with the oximeter; note sleeping position.',why:`Lowest SpO₂ under 90 % on ${F.lowSpo2.n} of ${F.lowSpo2.total} days.`});
+  if(F.lowActivity){const tg=Math.ceil((F.avgSteps+2000)/500)*500,ok=A.stepsGate.ok;
+    acts.push({id:'steps',pr:3+(ok?1:0),title:ok?`Reach ${fmtInt(tg)} steps on 4 days next week`:'Add two 15-minute walks on 4 days next week (no step target yet)',
+      how:'Add one walk after lunch and one after work. Keep one day easy.',measure:'Steps per day in the Activity file.',
+      why:ok?`Average ${fmtInt(F.avgSteps)} steps, and more steps went with deeper sleep (ρ ${fmtRho(A.stepsGate.rho)}, n=${A.stepsGate.n}).`:`Average ${fmtInt(F.avgSteps)} steps; ${F.days6k} of ${F.actDays} full days reached 6,000. A numeric target is only suggested once 21 or more days show that more steps go with deeper sleep (yours: ${fin(A.stepsGate.rho)?`ρ ${fmtRho(A.stepsGate.rho)}, `:''}n=${A.stepsGate.n}).`});}
+  if(F.lowSpo2.flag)acts.push({id:'spo2',pr:2,title:'Verify the low SpO₂ readings once',how:'Wear the ring snug on the same finger and take a fingertip pulse-oximeter reading on two nights.',measure:'Compare "Min. Spo2" with the oximeter; note sleeping position.',why:`Lowest SpO₂ under 90 % on ${F.lowSpo2.n} of ${F.lowSpo2.total} days.`});
   if(F.strain.length)acts.push({id:'strain',pr:3,title:'After a strain day, plan an easy day and an early night',how:'Skip hard training and alcohol for 24 hours and watch whether HR and HRV return to your band.',measure:'Avg HR and Avg HRV the next day vs. your usual range.',why:`Strain signal on ${F.strain.map(fmtDate).join(', ')}.`});
   acts.sort((a,b)=>b.pr-a.pr);
   const fill=[{id:'log',pr:0,title:'Log caffeine, alcohol, training and stress for 7 days',how:'Write one line per day in your notes app.',measure:'Check whether the unexplained spikes and long sleep latencies line up with these entries.',why:'The ring cannot see these causes.'},
@@ -576,16 +658,16 @@ function makeCoach(A){
   let experiment;
   const top=actions[0];
   if(top&&top.id==='onset'){const remT=Math.max(90,Math.round((B.rem.med||0)+10));
-    experiment={title:`5 nights with sleep onset before ${fmtClock(tgtOnset)}`,success:`On at least 3 of the 5 following mornings REM is ${remT} min or more and Avg HRV is at or above your median (${fmtNum(B.hrv.med)} ms). Compare with your last 5 nights.`};}
-  else if(top&&top.id==='steps'){experiment={title:'4 days with 2,000 extra steps',success:`Deep sleep on the following nights is at least ${fmtNum(B.deep.med)} min (your median) on 3 of 4 nights.`};}
-  else if(top&&top.id==='tst'){experiment={title:'5 nights with a 7 h 30 min sleep window',success:`Avg HRV on the following mornings is at or above ${fmtNum(B.hrv.med)} ms on at least 3 of 5 days.`};}
-  else experiment={title:'7 days of daily context notes',success:'At least 5 of 7 days logged, then check the highest-HR and longest-latency days against the notes.'};
+    experiment={kind:'onset',title:`5 nights with sleep onset before ${fmtClock(tgtOnset)}`,target:tgtOnset,remT,hrvMed:B.hrv.med,success:`On at least 3 of the 5 following mornings REM is ${remT} min or more and Avg HRV is at or above your median (${fmtNum(B.hrv.med)} ms), and you were asleep by ${fmtClock(tgtOnset)} on at least 4 nights.`};}
+  else if(top&&top.id==='steps'){experiment={kind:'steps',title:'7 days with 2,000 extra steps on at least 4 of them',stepsThr:Math.round((B.steps.med||0)+2000),deepMed:B.deep.med,success:`On at least 3 of the active days the following night has at least ${fmtNum(B.deep.med)} min of deep sleep (your median).`};}
+  else if(top&&top.id==='tst'){experiment={kind:'tst',title:'5 nights with a 7 h 30 min sleep window',hrvMed:B.hrv.med,success:`Avg HRV on at least 3 of 5 mornings is at or above ${fmtNum(B.hrv.med)} ms, with 7 h or more asleep on at least 4 nights.`};}
+  else experiment={kind:'log',title:'7 days of daily context notes',success:'At least 5 of 7 days have a context note. Then check the highest-HR and longest-latency days against the notes.'};
   const doctor=[];A.anomalies.forEach(a=>{if(a.doctor)doctor.push(a.doctor);});
   doctor.push('Nothing here is a diagnosis. Seek medical advice promptly for chest pain, fainting, shortness of breath, a resting heart rate that stays far above your usual, or any symptom that worries you.');
   const q=[];
   if(F.latency.length)q.push(`What was different on the evenings of ${F.latency.map(l=>fmtDate(l.evening)).join(' and ')} (late meal, caffeine, screens, stress, training time)?`);
   if(F.spike&&F.spike.length)q.push(`What happened around ${F.spike.map(fmtWD).join(', ')} when your heart rate peaked (stress, coffee, alcohol, illness)?`);
-  if(F.lowSpo2.n>=3)q.push('Do you snore, wake up with a dry mouth or headaches, or sleep on your back?');
+  if(F.lowSpo2.flag)q.push('Do you snore, wake up with a dry mouth or headaches, or sleep on your back?');
   if(A.outlier)q.push(`Why was the night before ${fmtWD(A.outlier.row.date)} short (late evening, work, noise, alcohol)?`);
   q.push('Do you drink alcohol or coffee in the evening, and how hard did you train in these days?');
   q.push('Are you feeling rested in the morning, and how would you rate your stress this week (1-10)?');
@@ -608,7 +690,7 @@ function makeIdeas(A){
     why:fin(F.onsetMin)?`Sleep onset ranged from ${fmtClock(F.onsetMin)} to ${fmtClock(F.onsetMax)}${F.lateStreak?` and drifted later for ${F.lateStreak.length} nights in a row`:''}.`:'Shows regularity, which often matters as much as duration.',
     rule:'Flag a 7-night onset range above 90 minutes.'});
   I.push({prio:'must',title:'Lowest SpO₂ per night with a 90 % line and a recurrence counter',chart:'Dots with a reference line',
-    why:`The lowest reading was under 90 % on ${F.lowSpo2.n} of ${F.lowSpo2.total} days (lowest ${fmtNum(F.lowSpo2.min)} %). A counter separates one-off artifacts from repeated dips.`,
+    why:`The lowest reading was under 90 % on ${F.lowSpo2.n} of ${F.lowSpo2.total} days (lowest ${fmtNum(F.lowSpo2.min)} %). Worst 7-day window: ${F.lowSpo2.worst} days under 90 %. A rolling counter separates one-off artifacts from repeated dips.`,
     rule:'Show "watch" when 3 or more days in 7 are under 90 %; suggest a second measurement.'});
   const c1=A.cget('onset-rem');
   I.push({prio:'nice',title:'Sleep onset vs. REM and HRV scatter',chart:'Scatter with a guide line and n/ρ',
@@ -623,10 +705,12 @@ function makeIdeas(A){
     why:`${A.ds.act.filter(a=>a.partial).length} partial day(s) and ${R.filter(r=>!r.paired).length} unpaired night(s) in this export. Skin temperature, respiratory rate and stress are not exported.`,rule:'Never score a day that is flagged partial.'});
   I.push({prio:'nice',title:'Weekly recap with one experiment',chart:'Text card plus before/after bars',
     why:`Example for you: ${A.coach.experiment.title}.`,rule:'Create a new experiment each Monday from the strongest finding.'});
+  const W=['Heart & HRV tab, alerts under "Things to watch"','Connections tab: tap a day, add context','Heart & HRV, Sleep, SpO₂ and Activity tabs','Sleep tab','SpO₂ tab with a rolling 7-day counter','Connections tab, unlocks at 14 nights','Connections tab, unlocks at 14 days','Day detail in Connections, markers on the timeline','Chips above charts, P/U/G badges on the dates','Coach tab: before/after and weekly recap'];
+  I.forEach((x,i)=>x.where=W[i]);
   return I;
 }
 
-function reportMarkdown(A,profile={}){
+function reportMarkdown(A,profile={},notes={}){
   const B=A.base,ds=A.ds,L=[];
   L.push(`# RingConn health report${ds.meta.name?` for ${ds.meta.name}`:''}`,`Data present: ${fmtDate(ds.from)} to ${fmtDate(ds.to)}`,'');
   L.push('## Summary',...A.summary.map(s=>s),'');
@@ -634,16 +718,19 @@ function reportMarkdown(A,profile={}){
   L.push('## 2. Personal baselines','| Metric | n | Median | Usual range |','|---|---|---|---|');
   [['tst','Sleep time',fmtHM],['deep','Deep sleep (min)'],['rem','REM (min)'],['lat','Time to fall asleep (min)'],['hr','Avg HR (bpm)'],['hrv','Avg HRV (ms)'],['spAvg','Avg SpO₂ (%)'],['spMin','Lowest SpO₂ (%)'],['steps','Steps']].forEach(([k,l,f])=>{const b=B[k];if(b&&b.n){const ff=f||fmtNum;L.push(`| ${l} | ${b.n} | ${ff(b.med)} | ${ff(b.lo)} to ${ff(b.hi)} |`);}});
   L.push('','## 3. Strongest relationships (hypotheses, Spearman)','| Pair | ρ | n | p | Confidence |','|---|---|---|---|---|');
-  A.topCorr.forEach(t=>L.push(`| ${FIELDS[t.pair.x].label} → ${FIELDS[t.pair.y].label} | ${fmtRho(t.c.rho)} | ${t.c.n} | ${t.c.p.toFixed(3)} | ${t.conf} |`));
+  A.corrRanked.slice(0,6).forEach(t=>L.push(`| ${FIELDS[t.pair.x].label} → ${FIELDS[t.pair.y].label} | ${fmtRho(t.c.rho)} | ${t.c.n} | ${t.c.p.toFixed(3)} | ${t.conf} |`));
   L.push('','## 4. Anomalies and hints',...(A.anomalies.length?A.anomalies.map(a=>`- [${a.level}] **${a.title}**: ${a.text}${a.dates.length?` (${a.dates.map(fmtDate).join(', ')})`:''}`):['- Nothing outside your usual ranges.']));
   if(A.outlier)L.push('',outlierText(A));
   L.push('','## 5. Coaching',...A.coach.actions.map((a,i)=>`${i+1}. **${a.title}**. ${a.how} Measure: ${a.measure}`),'',`Experiment: **${A.coach.experiment.title}**. Success: ${A.coach.experiment.success}`,'','When to see a doctor:',...A.coach.doctor.map(d=>`- ${d}`));
   if(profile.goals)L.push('',`Your stated goal: ${profile.goals}`);
   L.push('','## 6. App recommendation',...A.ideas.map(i=>`- [${i.prio}] **${i.title}** (${i.chart}). ${i.why} Rule: ${i.rule}`),'','## 7. Questions for you',...A.coach.questions.map(q=>`- ${q}`),'','_Wellness insights from consumer-ring data, not medical advice._');
+  const nk=Object.keys(notes).sort();
+  if(nk.length)L.splice(L.length-1,0,'','## Context notes',...nk.map(d=>`- ${fmtWD(d)}: ${[...(notes[d].tags||[]),notes[d].mood?`mood ${notes[d].mood}/5`:'',notes[d].text||''].filter(Boolean).join(', ')}`));
+  if(A.weekly)L.splice(L.length-1,0,'','## Weekly recap (last 7 vs. previous 7 nights)',...A.weekly.rows.map(r=>`- ${r.label}: ${r.prev} → ${r.last} (${r.arrow} ${r.word}, ${r.deltaText})`));
   return L.join('\n');
 }
 
-return {parseCSV,buildDataset,analyze,reportMarkdown,corrOf,spearman,baseline,statusOf,FIELDS,fieldFmt,PAIRS,
+return {parseCSV,buildDataset,analyze,reportMarkdown,evalExperiment,defaultExpStart,corrOf,spearman,baseline,statusOf,FIELDS,fieldFmt,PAIRS,
   fmtHM,fmtClock,fmtNum,fmtInt,fmtRho,fmtDate,fmtWD,addDays,dkey,dow,WD,MO,median,mean,outlierText,pad};
 })();
 // ENGINE-END
@@ -691,18 +778,51 @@ vitals:`Date,Avg. Heart Rate(bpm),Min. Heart Rate(bpm),Max. Heart Rate(bpm),Avg.
 
 <script>
 (()=>{
-const {fmtHM,fmtClock,fmtNum,fmtRho,fmtDate,fmtWD,addDays,FIELDS,fieldFmt}=Engine;
+const {fmtHM,fmtClock,fmtNum,fmtInt,fmtRho,fmtDate,fmtWD,addDays,FIELDS,fieldFmt}=Engine;
 const fin=Number.isFinite;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const S={ds:null,A:null,tab:'overview',demo:true,profile:{},mounts:[],sel:null};
-try{S.profile=JSON.parse(localStorage.getItem('rc-profile')||'{}')||{};}catch(e){S.profile={};}
+const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
+const S={ds:null,A:null,tab:'overview',demo:true,profile:ls.get('rc-profile',{})||{},notes:ls.get('rc-notes',{})||{},expStart:ls.get('rc-exp-start',null),mounts:[],sel:null,prelim:{},scat:{},timeline:null};
 
 /* ---------- tooltip ---------- */
 const tipEl=$('#tip');
 function showTip(html,cx,cy){tipEl.innerHTML=html;tipEl.hidden=false;const r=tipEl.getBoundingClientRect();let x=cx+14,y=cy+14;if(x+r.width>innerWidth-8)x=cx-r.width-14;if(y+r.height>innerHeight-8)y=cy-r.height-14;tipEl.style.transform=`translate(${Math.max(8,x)}px,${Math.max(8,y)}px)`;}
 const hideTip=()=>{tipEl.hidden=true;};
 addEventListener('scroll',hideTip,{passive:true});
+
+/* ---------- helpers: bands, flags, badges, chips, notes ---------- */
+const bandOf=(k,color)=>{const b=S.A.base[k];return b&&b.n>=7?{lo:b.lo,hi:b.hi,med:b.med,color}:null;};
+const flagOf=(k,dir)=>{const b=S.A.base[k];return b&&b.n>=7?{dir,lo:b.lo,hi:b.hi}:null;};
+const hasNote=n=>!!(n&&((n.tags&&n.tags.length)||n.mood||n.text));
+const noteText=n=>[...(n.tags||[]),n.mood?`mood ${n.mood}/5`:'',n.text||''].filter(Boolean).join(', ');
+function badgesFor(dates,kinds){
+  const {ds,A}=S,P=new Set(ds.partial||[]),U=new Set(A.quality.unpaired),G=new Set(A.quality.gaps),out=[];
+  dates.forEach((d,i)=>{
+    if(kinds.includes('P')&&P.has(d))out.push({i,k:'P'});
+    else if(kinds.includes('U')&&U.has(d))out.push({i,k:'U'});
+    else if(kinds.includes('G')&&G.has(d))out.push({i,k:'G'});
+    if(kinds.includes('N')&&hasNote(S.notes[d]))out.push({i,k:'N'});
+  });
+  return out;
+}
+function badgeLegend(dates,kinds){
+  const q=S.A.quality,L=[],has=k=>dates.some(d=>(k==='P'?(S.ds.partial||[]):k==='U'?q.unpaired:q.gaps).includes(d));
+  if(kinds.includes('P')&&has('P'))L.push({kind:'badge',letter:'P',label:'Partial day, not scored'});
+  if(kinds.includes('U')&&has('U'))L.push({kind:'badge',letter:'U',label:'Night without usable vitals'});
+  if(kinds.includes('G')&&has('G'))L.push({kind:'badge',letter:'G',label:'No data'});
+  if(kinds.includes('N'))L.push({kind:'badge',letter:'N',label:'Your context note'});
+  return L;
+}
+function qChips(kinds){
+  const q=S.A.quality,c=[];
+  if(kinds.includes('P')&&q.partial.length)c.push(`${q.partial.length} partial day${q.partial.length>1?'s':''} not scored (${q.partial.map(fmtDate).join(', ')})`);
+  if(kinds.includes('U')&&q.unpaired.length)c.push(`${q.unpaired.length} night${q.unpaired.length>1?'s':''} without usable vitals (${q.unpaired.map(fmtDate).join(', ')})`);
+  if(kinds.includes('G')&&q.gaps.length)c.push(`${q.gaps.length} day${q.gaps.length>1?'s':''} with no data`);
+  if(kinds.includes('M'))c.push('Not in export: skin temperature, respiratory rate, stress');
+  return c;
+}
+const BAND_LEG=[{label:'Your usual range',color:'var(--ink2)',kind:'band'},{label:'Median',color:'var(--ink2)',kind:'dash'},{kind:'diamond',label:'Outside your usual, unfavorable'}];
 
 /* ---------- chart primitives ---------- */
 function niceTicks(lo,hi,count=4){
@@ -716,22 +836,24 @@ function niceTicks(lo,hi,count=4){
 }
 function topPath(x,y,w,h,r){r=Math.max(0,Math.min(r,w/2,h));return `M${x},${y+h}V${y+r}Q${x},${y} ${x+r},${y}H${x+w-r}Q${x+w},${y} ${x+w},${y+r}V${y+h}Z`;}
 const fmtTick=v=>Math.abs(v)>=10000?(v/1000)+'k':String(+v.toFixed(2));
+const dia=(x,y)=>`<path d="M${x},${y-5.5}L${x+5.5},${y}L${x},${y+5.5}L${x-5.5},${y}Z" fill="var(--crit)" stroke="var(--surface)" stroke-width="1.5"/>`;
+const isBad=(s,v)=>s.flag&&fin(v)&&((s.flag.dir<0&&v<s.flag.lo)||(s.flag.dir>0&&v>s.flag.hi));
 
 function drawPanels(body,o){
   const w=Math.max(280,body.clientWidth||640),m={l:o.ml||46,r:14,b:38},n=o.dates.length;
   if(!n){body.innerHTML='<p class="empty">No data in this range.</p>';return;}
+  const badges=o.badges||[],strip=(o.badgeStrip||badges.length)?24:0;
   const iw=w-m.l-m.r;
   const hasBar=o.panels.some(p=>p.series.some(s=>s.type==='bar'||s.type==='stack'));
-  const mode=hasBar?'band':'point';
-  const slot=iw/n;
+  const mode=hasBar?'band':'point',slot=iw/n;
   const xAt=i=>mode==='band'?m.l+(i+.5)*slot:(n>1?m.l+i*iw/(n-1):m.l+iw/2);
   const bw=Math.min(slot*.62,40),multi=o.panels.length>1;
-  let y=6;const L=[];
+  let y=6+strip;const L=[];
   o.panels.forEach(p=>{const th=multi?20:0,top=y+th,h=p.h||150;L.push({p,top,h,yt:y});y=top+h+(multi?16:0);});
   const H=y-(multi?16:0)+m.b,firstTop=L[0].top,lastBottom=L[L.length-1].top+L[L.length-1].h;
   let svg=`<svg class="svg" viewBox="0 0 ${w} ${H}" width="${w}" height="${H}" role="img" aria-label="${esc(o.aria||'Chart')}">`;
   const hlW=mode==='band'?slot:Math.min(28,iw/Math.max(n,1));
-  svg+=`<rect class="hl" x="-100" y="${firstTop}" width="${hlW}" height="${lastBottom-firstTop}" fill="var(--hl)" style="display:none"/>`;
+  svg+=`<rect class="hl" x="-100" y="${firstTop-(multi?20:0)}" width="${hlW}" height="${lastBottom-firstTop+(multi?20:0)}" fill="var(--hl)" style="display:none"/>`;
   L.forEach(P=>{
     const {p,top,h}=P;
     let lo=Infinity,hi=-Infinity;const add=v=>{if(fin(v)){lo=Math.min(lo,v);hi=Math.max(hi,v);}};
@@ -742,29 +864,34 @@ function drawPanels(body,o){
     if(p.band){add(p.band.lo);add(p.band.hi);}(p.refs||[]).forEach(r=>add(r.y));if(p.zero)add(0);
     if(p.yMin!=null)lo=p.yMin;if(p.yMax!=null)hi=p.yMax;
     if(!fin(lo)){lo=0;hi=1;}
-    const zb=p.series.some(s=>s.type==='bar'||s.type==='stack')||p.zero,pad=(hi-lo||1)*.08;
+    const zb=p.series.some(s=>s.type==='bar'||s.type==='stack')||p.zero,pad=(hi-lo||1)*.1;
     if(!zb&&p.yMin==null)lo-=pad;if(p.yMax==null)hi+=pad;
     const nt=niceTicks(lo,hi,p.ticks||3),yAt=v=>top+h-(v-nt.lo)/(nt.hi-nt.lo)*h;
     if(multi)svg+=`<text class="bold" x="${m.l}" y="${P.yt+13}">${esc(p.label)}${p.unit?`<tspan style="font-weight:400" dx="6">${esc(p.unit)}</tspan>`:''}</text>`;
     nt.ticks.forEach(t=>{const yy=yAt(t);svg+=`<line x1="${m.l}" x2="${w-m.r}" y1="${yy}" y2="${yy}" stroke="var(--grid)" stroke-width="1"/><text x="${m.l-8}" y="${yy+4}" text-anchor="end">${esc((p.tickFmt||fmtTick)(t))}</text>`;});
     svg+=`<line x1="${m.l}" x2="${w-m.r}" y1="${top+h}" y2="${top+h}" stroke="var(--axis)"/>`;
-    if(p.band){const by=yAt(Math.min(nt.hi,p.band.hi)),bb=yAt(Math.max(nt.lo,p.band.lo));svg+=`<rect x="${m.l}" y="${by}" width="${iw}" height="${Math.max(0,bb-by)}" fill="${p.band.color||p.series[0].color}" opacity=".13"/>`;}
-    (p.refs||[]).forEach(r=>{const yy=yAt(r.y);svg+=`<line x1="${m.l}" x2="${w-m.r}" y1="${yy}" y2="${yy}" stroke="var(--ink2)" stroke-width="1" stroke-dasharray="4 4" opacity=".7"/><text x="${w-m.r-2}" y="${yy-4}" text-anchor="end" style="fill:var(--ink2)">${esc(r.label)}</text>`;});
-    // stacks
-    if(st.length){for(let i=0;i<n;i++){let cum=0;const pos=st.map(s=>fin(s.vals[i])&&s.vals[i]>0?s.vals[i]:0);const total=pos.reduce((a,b)=>a+b,0);let acc=0;
+    if(p.band){const by=yAt(Math.min(nt.hi,p.band.hi)),bb=yAt(Math.max(nt.lo,p.band.lo)),bc=p.band.color||p.series[0].color;
+      svg+=`<rect x="${m.l}" y="${by}" width="${iw}" height="${Math.max(0,bb-by)}" fill="${bc}" opacity=".13"/>`;
+      if(p.band.med!=null&&p.band.med>=nt.lo&&p.band.med<=nt.hi)svg+=`<line x1="${m.l}" x2="${w-m.r}" y1="${yAt(p.band.med)}" y2="${yAt(p.band.med)}" stroke="${bc}" stroke-width="1.3" stroke-dasharray="5 3" opacity=".9"/>`;}
+    let late='';
+    (p.refs||[]).forEach(r=>{const yy=yAt(r.y);svg+=`<line x1="${m.l}" x2="${w-m.r}" y1="${yy}" y2="${yy}" stroke="var(--ink2)" stroke-width="1" stroke-dasharray="4 4" opacity=".7"/>`;late+=`<text x="${w-m.r-2}" y="${yy-4}" text-anchor="end" style="fill:var(--ink2);paint-order:stroke;stroke:var(--surface);stroke-width:3px">${esc(r.label)}</text>`;});
+    if(st.length){for(let i=0;i<n;i++){const pos=st.map(s=>fin(s.vals[i])&&s.vals[i]>0?s.vals[i]:0);const total=pos.reduce((a,b)=>a+b,0);let acc=0;
       st.forEach((s,si)=>{const v=pos[si];if(!v)return;const below=acc>0,above=total-acc-v>0;const y1=yAt(acc+v)+(above?1:0),y0=yAt(acc)-(below?1:0);const hh=Math.max(0,y0-y1);
         svg+=above?`<rect x="${xAt(i)-bw/2}" y="${y1}" width="${bw}" height="${hh}" fill="${s.color}"/>`:`<path d="${topPath(xAt(i)-bw/2,y1,bw,hh,4)}" fill="${s.color}"/>`;acc+=v;});}}
-    // bars
     p.series.filter(s=>s.type==='bar').forEach(s=>{for(let i=0;i<n;i++){const v=s.vals[i];if(!fin(v))continue;const y1=yAt(v),hh=Math.max(0,yAt(0)-y1);
-      svg+=s.hollow&&s.hollow[i]?`<path d="${topPath(xAt(i)-bw/2+.75,y1+.75,bw-1.5,hh-.75,4)}" fill="none" stroke="${s.color}" stroke-width="1.5" stroke-dasharray="3 2"/>`:`<path d="${topPath(xAt(i)-bw/2,y1,bw,hh,4)}" fill="${s.color}"/>`;}});
-    // lines + dots
+      svg+=s.hollow&&s.hollow[i]?`<path d="${topPath(xAt(i)-bw/2+.75,y1+.75,bw-1.5,hh-.75,4)}" fill="none" stroke="${s.color}" stroke-width="1.5" stroke-dasharray="3 2"/>`:`<path d="${topPath(xAt(i)-bw/2,y1,bw,hh,4)}" fill="${s.color}"/>`;
+      if(isBad(s,v))svg+=dia(xAt(i),y1-9);}});
     p.series.filter(s=>s.type==='line').forEach(s=>{let d='',pen=false;for(let i=0;i<n;i++){const v=s.vals[i];if(!fin(v)){pen=false;continue;}d+=`${pen?'L':'M'}${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`;pen=true;}
       svg+=`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"${s.dash?` stroke-dasharray="${s.dash}"`:''}/>`;
-      if(n<=31){let lastI=-1;for(let i=0;i<n;i++)if(fin(s.vals[i]))lastI=i;for(let i=0;i<n;i++){const v=s.vals[i];if(!fin(v))continue;svg+=`<circle cx="${xAt(i)}" cy="${yAt(v)}" r="${i===lastI?4.5:3}" fill="${s.color}" stroke="var(--surface)" stroke-width="2"/>`;}}});
+      if(n<=31){let lastI=-1;for(let i=0;i<n;i++)if(fin(s.vals[i]))lastI=i;for(let i=0;i<n;i++){const v=s.vals[i];if(!fin(v))continue;
+        svg+=isBad(s,v)?dia(xAt(i),yAt(v)):`<circle cx="${xAt(i)}" cy="${yAt(v)}" r="${i===lastI?4.5:3}" fill="${s.color}" stroke="var(--surface)" stroke-width="2"/>`;}}});
     p.series.filter(s=>s.type==='dot').forEach(s=>{for(let i=0;i<n;i++){const v=s.vals[i];if(!fin(v))continue;
       svg+=s.ring?`<circle cx="${xAt(i)}" cy="${yAt(v)}" r="4" fill="var(--surface)" stroke="${s.color}" stroke-width="2"/>`:`<circle cx="${xAt(i)}" cy="${yAt(v)}" r="3.8" fill="${s.color}" stroke="var(--surface)" stroke-width="2"/>`;}});
+    svg+=late;
   });
-  // x labels
+  const seen={};
+  badges.forEach(b=>{const c=seen[b.i]||0;seen[b.i]=c+1;const cx=xAt(b.i)+c*17,cy=6+11;
+    svg+=`<g><circle cx="${cx}" cy="${cy}" r="8" fill="${b.k==='N'?'var(--accent)':'var(--surface)'}" stroke="${b.k==='N'?'var(--accent)':'var(--ink2)'}" stroke-width="1.5"/><text x="${cx}" y="${cy+3.5}" text-anchor="middle" style="font-size:9.5px;font-weight:700;fill:${b.k==='N'?'var(--accent-ink)':'var(--ink2)'}">${b.k}</text></g>`;});
   const minW=56,every=Math.max(1,Math.ceil(minW/(mode==='band'?slot:iw/Math.max(n-1,1))));
   for(let i=0;i<n;i+=every){const k=o.dates[i],[,mm,dd]=k.split('-').map(Number);
     svg+=`<text x="${xAt(i)}" y="${lastBottom+15}" text-anchor="middle" style="fill:var(--ink2)">${dd} ${Engine.MO[mm-1]}</text><text x="${xAt(i)}" y="${lastBottom+28}" text-anchor="middle">${Engine.WD[Engine.dow(k)]}</text>`;}
@@ -773,9 +900,9 @@ function drawPanels(body,o){
   body.innerHTML=svg;
   const svgEl=body.querySelector('svg'),ov=svgEl.querySelector('.ov'),xh=svgEl.querySelector('.xh'),hl=svgEl.querySelector('.hl');
   const idxAt=cx=>{const r=svgEl.getBoundingClientRect(),x=(cx-r.left)*(w/r.width);let i=mode==='band'?Math.floor((x-m.l)/slot):Math.round((x-m.l)/(iw/Math.max(n-1,1)));return Math.max(0,Math.min(n-1,i));};
-  const tip=o.tip||(i=>{let h=`<b>${esc(fmtWD(o.dates[i]))}</b>`;o.panels.forEach(p=>p.series.forEach(s=>{const v=s.vals[i];h+=`<div class="tr"><i class="sw" style="background:${s.color}"></i><span>${esc(s.label)}</span><b>${fin(v)?(s.fmt?s.fmt(v):fmtNum(v)):'–'}</b></div>`;}));return h;});
+  const tip=o.tip||(i=>{let h=`<b>${esc(fmtWD(o.dates[i]))}</b>`,flagged=false;o.panels.forEach(p=>p.series.forEach(s=>{const v=s.vals[i],bad=isBad(s,v);if(bad)flagged=true;h+=`<div class="tr"><i class="sw" style="background:${s.color}"></i><span>${esc(s.label)}</span><b>${fin(v)?(s.fmt?s.fmt(v):fmtNum(v)):'–'}${bad?' ◆':''}</b></div>`;}));if(flagged)h+='<div class="tr"><span>◆ outside your usual range</span></div>';return h;});
   const setSel=i=>{if(i==null||i<0){hl.style.display='none';return;}hl.setAttribute('x',xAt(i)-hlW/2);hl.style.display='';};
-  const show=e=>{const i=idxAt(e.clientX);xh.setAttribute('x1',xAt(i));xh.setAttribute('x2',xAt(i));xh.style.display='';showTip(tip(i),e.clientX,e.clientY);};
+  const show=e=>{const i=idxAt(e.clientX);xh.setAttribute('x1',xAt(i));xh.setAttribute('x2',xAt(i));xh.style.display='';showTip(tip(i)+(o.tipExtra?o.tipExtra(i):''),e.clientX,e.clientY);};
   ov.addEventListener('pointermove',show);ov.addEventListener('pointerdown',show);
   ov.addEventListener('pointerleave',()=>{xh.style.display='none';hideTip();});
   ov.addEventListener('click',e=>{const i=idxAt(e.clientX);setSel(i);if(o.onPick)o.onPick(i);});
@@ -831,24 +958,26 @@ function drawScatter(body,o){
 }
 
 function tableHTML(head,rows){return `<div class="tablewrap"><table><thead><tr>${head.map(h=>`<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
-function legendHTML(l){if(!l||!l.length)return '';return `<div class="legend">${l.map(i=>`<span><i class="${i.kind||''}" style="background:${i.color};${i.kind==='ring'?`border-color:${i.color}`:''}"></i>${esc(i.label)}</span>`).join('')}</div>`;}
+function legendHTML(l){if(!l||!l.length)return '';return `<div class="legend">${l.map(i=>i.kind==='badge'?`<span><i class="badge${i.letter==='N'?' note':''}">${i.letter}</i>${esc(i.label)}</span>`:i.kind==='diamond'?`<span><i class="dia"></i>${esc(i.label)}</span>`:i.kind==='dash'?`<span><i class="dash" style="border-color:${i.color}"></i>${esc(i.label)}</span>`:`<span><i class="${i.kind||''}" style="background:${i.color};${i.kind==='ring'?`border-color:${i.color}`:''}"></i>${esc(i.label)}</span>`).join('')}</div>`;}
+const chipsHTML=c=>c&&c.length?`<div class="qchips">${c.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</div>`:'';
 
 function slot(spec){const id='c'+S.mounts.length;S.mounts.push({id,spec});return `<div class="card chartcard" id="${id}"></div>`;}
 function mountCard(host,spec){
-  host.innerHTML=`<div class="chead"><div><h3>${esc(spec.title)}</h3>${spec.sub?`<p class="sub">${spec.sub}</p>`:''}</div><div class="seg" role="group" aria-label="Chart or table"><button type="button" data-v="chart" aria-pressed="true">Chart</button><button type="button" data-v="table" aria-pressed="false">Table</button></div></div>${legendHTML(spec.legend)}<div class="cbody"></div>${spec.note?`<p class="note">${spec.note}</p>`:''}`;
+  host.innerHTML=`<div class="chead"><div><h3>${esc(spec.title)}</h3>${spec.sub?`<p class="sub">${spec.sub}</p>`:''}</div><div class="seg" role="group" aria-label="Chart or table"><button type="button" data-v="chart" aria-pressed="true">Chart</button><button type="button" data-v="table" aria-pressed="false">Table</button></div></div>${chipsHTML(spec.chips)}${legendHTML(spec.legend)}<div class="cbody"></div>${spec.note?`<p class="note">${spec.note}</p>`:''}`;
   const body=host.querySelector('.cbody');let view='chart',lastW=0;
   const draw=()=>{if(view==='table')body.innerHTML=spec.table();else{body.innerHTML='';spec.draw(body);}};
+  spec.redraw=()=>{if(host.isConnected)draw();};
   host.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>{view=b.dataset.v;host.querySelectorAll('.seg button').forEach(x=>x.setAttribute('aria-pressed',x===b));draw();}));
   new ResizeObserver(()=>{if(view!=='chart')return;const w=body.clientWidth;if(Math.abs(w-lastW)>1){lastW=w;draw();}}).observe(body);
   lastW=body.clientWidth;draw();
 }
-function panelsSpec(title,sub,o,legend,note){
-  return {title,sub,legend,note,draw:b=>drawPanels(b,o),table:()=>{
+function panelsSpec(title,sub,o,legend,note,chips){
+  return {title,sub,legend,note,chips,draw:b=>drawPanels(b,o),table:()=>{
     const cols=[];o.panels.forEach(p=>p.series.forEach(s=>cols.push({l:s.label+(p.unit?` (${p.unit})`:''),v:s.vals,f:s.fmt||(x=>fmtNum(x))})));
     return tableHTML(['Date',...cols.map(c=>c.l)],o.dates.map((d,i)=>[fmtWD(d),...cols.map(c=>fin(c.v[i])?c.f(c.v[i]):'–')]));}};
 }
 
-/* ---------- helpers ---------- */
+/* ---------- small UI pieces ---------- */
 const pill=(lvl,t)=>`<span class="pill ${lvl}"><i></i>${esc(t)}</span>`;
 const LVLTXT={green:'Within your usual range',amber:'A bit off your usual',red:'Clearly off your usual',gray:'Baseline building (7+ days)'};
 function spark(vals,color){if(vals.length<2)return '';const mn=Math.min(...vals),mx=Math.max(...vals),W=120,Hh=28,pd=3;const X=i=>pd+i/(vals.length-1)*(W-2*pd),Y=v=>mx===mn?Hh/2:Hh-pd-(v-mn)/(mx-mn)*(Hh-2*pd);
@@ -858,137 +987,214 @@ const needFile=n=>`<div class="card"><p class="empty">This view needs the ${esc(
 const fmtSteps=v=>Math.round(v).toLocaleString('en-US');
 function dateRange(from,to){const out=[];for(let d=from;d<=to;d=addDays(d,1))out.push(d);return out;}
 
+/* ---------- context log ---------- */
+const TAGS=['Caffeine','Alcohol','Hard training','Late meal','Stress','Symptoms','Travel','Noise / heat'];
+function ctxHTML(d){
+  const n=S.notes[d]||{},flags=S.A.flagMap[d];
+  return `<div class="ctx"><h4>Context for this day</h4>${flags&&!hasNote(n)?`<p class="ask"><b>Flagged: ${esc(flags.join(', '))}.</b> What happened? A short note makes this day readable later.</p>`:''}<div class="tags" role="group" aria-label="Tags">${TAGS.map(t=>`<button type="button" class="tag" data-tag="${esc(t)}" aria-pressed="${(n.tags||[]).includes(t)}">${esc(t)}</button>`).join('')}</div><div class="formgrid"><label for="mood">Mood / energy<select id="mood"><option value="">–</option>${[1,2,3,4,5].map(v=>`<option value="${v}" ${String(n.mood)===String(v)?'selected':''}>${v} ${['very low','low','okay','good','great'][v-1]}</option>`).join('')}</select></label><label for="ntext">Note<input id="ntext" value="${esc(n.text||'')}" placeholder="e.g. 3 coffees after 4 pm, hard leg day"></label></div><p class="note">Saved automatically. Stored only in this browser, per date.</p></div>`;
+}
+function bindCtx(d){
+  const root=$('#daydetail');if(!root||!root.querySelector('.ctx'))return;
+  const save=()=>{const tags=[...root.querySelectorAll('.tag[aria-pressed="true"]')].map(b=>b.dataset.tag),mood=root.querySelector('#mood').value,text=root.querySelector('#ntext').value.trim(),n={tags,mood,text};
+    if(hasNote(n))S.notes[d]=n;else delete S.notes[d];ls.set('rc-notes',S.notes);S.timeline&&S.timeline.redraw&&S.timeline.redraw();};
+  root.querySelectorAll('.tag').forEach(b=>b.addEventListener('click',()=>{b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true');save();}));
+  root.querySelector('#mood').addEventListener('change',save);root.querySelector('#ntext').addEventListener('change',save);
+}
+function dayInfo(d){
+  const {ds}=S,r=ds.rows.find(x=>x.date===d),v=ds.vmap[d],a=ds.amap[d],items=[];
+  if(r)items.push(['Sleep (night ending)',fmtHM(r.tst)],['Deep / REM',`${fmtNum(r.deep)} / ${fmtNum(r.rem)} min`],['Asleep at',fmtClock(r.onset)],['Time to fall asleep',Math.round(r.lat)+' min']);
+  if(v)items.push(['Avg HR (lowest / max)',`${fmtNum(v.hr)} (${fmtNum(v.hrMin)} / ${fmtNum(v.hrMax)}) bpm`],['Avg HRV',fmtNum(v.hrv)+' ms'],['SpO₂ avg / lowest',`${fmtNum(v.spAvg)} / ${fmtNum(v.spMin)} %`]);
+  if(a)items.push(['Steps',fmtSteps(a.steps)+(a.partial?' (partial day)':'')],['Energy',fmtSteps(a.kcal)+' kcal']);
+  return `<h3 style="margin-bottom:10px">${esc(fmtWD(d))}</h3><div class="daydetail">${items.map(i=>`<div><span>${esc(i[0])}</span><b>${esc(i[1])}</b></div>`).join('')||'<p class="sub">No data for this day.</p>'}</div>${ctxHTML(d)}`;
+}
+
 /* ---------- views ---------- */
+function flagHTML(a){
+  const L={check:'Check',watch:'Watch',info:'Note'},fd=a.dates&&a.dates.length&&S.A.flagMap[a.dates[0]]&&['strain','short','spike','latency'].includes(a.id)?a.dates[0]:null;
+  return `<li class="flag ${a.level}"><span class="shape"></span><div><b>${esc(a.title)}</b><span class="lvl">${L[a.level]}</span><p>${esc(a.text)}</p>${a.dates&&a.dates.length?`<p class="dts">Dates: ${esc(a.dates.map(fmtDate).join(', '))}</p>`:''}${a.doctor?`<p><i>${esc(a.doctor)}</i></p>`:''}${fd?`<p style="margin-top:6px"><button class="btn ghost small" type="button" data-ctx="${fd}">${hasNote(S.notes[fd])?'Edit':'Add'} context for ${esc(fmtWD(fd))}</button></p>`:''}</div></li>`;}
 function vOverview(){
   const {A,ds}=S;
-  const tiles=A.tiles.map(t=>{const f=t.key==='steps'?fmtSteps:t.fmt;const isHM=t.key==='tst';
-    const val=isHM?fmtHM(t.value):f(t.value);
-    return `<div class="tile"><div class="tl">${esc(t.label)}</div><div class="tv">${esc(isHM?val:val)}${isHM||!t.unit?'':`<span class="tu">${esc(t.unit)}</span>`}</div><div class="tw">${t.key==='tst'||t.key==='deep'||t.key==='rem'?'Night ending':'Latest day'} ${esc(fmtDate(t.date))}</div>${pill(t.level,LVLTXT[t.level])}<div class="tm">${t.base.n>=7?`Usual ${esc(isHM?fmtHM(t.base.med):fmtNum(t.base.med))} (${esc(isHM?fmtHM(t.base.lo):fmtNum(t.base.lo))} to ${esc(isHM?fmtHM(t.base.hi):fmtNum(t.base.hi))})`:`${t.base.n} day${t.base.n===1?'':'s'} so far`}</div>${spark(t.spark,TCOL[t.key])}</div>`;}).join('');
+  const tiles=A.tiles.map(t=>{const isHM=t.key==='tst',f=t.key==='steps'?fmtSteps:t.fmt,val=isHM?fmtHM(t.value):f(t.value);
+    return `<div class="tile"><div class="tl">${esc(t.label)}</div><div class="tv">${esc(val)}${isHM||!t.unit?'':`<span class="tu">${esc(t.unit)}</span>`}</div><div class="tw">${['tst','deep','rem'].includes(t.key)?'Night ending':'Latest day'} ${esc(fmtDate(t.date))}</div>${pill(t.level,LVLTXT[t.level])}<div class="tm">${t.base.n>=7?`Usual ${esc(isHM?fmtHM(t.base.med):fmtNum(t.base.med))} (${esc(isHM?fmtHM(t.base.lo):fmtNum(t.base.lo))} to ${esc(isHM?fmtHM(t.base.hi):fmtNum(t.base.hi))})`:`${t.base.n} day${t.base.n===1?'':'s'} so far`}</div>${spark(t.spark,TCOL[t.key])}</div>`;}).join('');
   const flags=A.anomalies.length?`<ul class="flags">${A.anomalies.map(flagHTML).join('')}</ul>`:'<p class="sub">Nothing outside your usual ranges.</p>';
-  const nn=A.ds.rows.length;
+  const nn=ds.rows.length;
+  const open=Object.keys(A.flagMap).filter(d=>!hasNote(S.notes[d])).sort();
+  const ask=open.length?`<section class="banner"><b>${open.length} flagged day${open.length>1?'s have':' has'} no context yet.</b> A one-line note makes the pattern readable later.<span class="btnrow">${open.slice(0,4).map(d=>`<button class="btn ghost small" type="button" data-ctx="${d}">${esc(fmtWD(d))}</button>`).join('')}</span></section>`:'';
   return `<section class="card"><div class="rowbar"><h2>Summary</h2><button class="btn small" data-copy type="button">Copy report</button></div>${A.summary.map(s=>`<p class="lead">${esc(s)}</p>`).join('')}</section>
   <section><div class="tiles">${tiles||'<p class="empty">No data yet.</p>'}</div></section>
-  <section class="banner"><b>Read this as hypotheses.</b> ${nn<7?`Only ${nn} nights so far: baselines and correlations need at least 7.`:nn<21?`With ${nn} nights, a rank correlation below about 0.65 cannot be told apart from chance, and showing a pattern is not showing a cause.`:`With ${nn} nights, patterns start to firm up, but they still show association, not cause.`}</section>
+  <section class="banner"><b>Read this as hypotheses.</b> ${nn<7?`Only ${nn} nights so far: baselines and correlations need at least 7.`:nn<21?`With ${nn} nights, a rank correlation below about 0.65 cannot be told apart from chance, and showing a pattern is not showing a cause.`:`With ${nn} nights, patterns start to firm up, but they still show association, not cause.`}</section>${ask}
   <div class="grid2"><section class="card"><h2>Things to watch</h2><p class="sub" style="margin-bottom:12px">Rules run on your own baseline. Hints, not diagnoses.</p>${flags}</section>
   <section class="card"><h2>Data check</h2><ul class="dq" style="margin-top:10px">${ds.dq.map(d=>`<li class="${d.lvl==='warn'?'warn':''}">${esc(d.text)}</li>`).join('')}</ul>
   <p class="note"><b>Not in this export:</b> skin temperature, respiratory rate, stress, true resting heart rate and time series. "Lowest HR" is only a proxy for resting HR, and Min/Max of HRV and SpO₂ are single noisy peaks, so correlations use the averages.</p></section></div>`;
 }
-function flagHTML(a){const L={check:'Check',watch:'Watch',info:'Note'};
-  return `<li class="flag ${a.level}"><span class="shape"></span><div><b>${esc(a.title)}</b><span class="lvl">${L[a.level]}</span><p>${esc(a.text)}</p>${a.dates&&a.dates.length?`<p class="dts">Dates: ${esc(a.dates.map(fmtDate).join(', '))}</p>`:''}${a.doctor?`<p><i>${esc(a.doctor)}</i></p>`:''}</div></li>`;}
 
 function vSleep(){
   const {A,ds}=S,R=ds.rows;if(!R.length)return needFile('Sleep');
   const dates=R.map(r=>r.date),B=A.base;
   const stage=(l,k,c)=>({type:'stack',label:l,color:c,vals:R.map(r=>r[k]),fmt:v=>fmtNum(v)+' min'});
   const leg=[{label:'Deep',color:'var(--s1)'},{label:'Light',color:'var(--s2)'},{label:'REM',color:'var(--s3)'},{label:'Awake',color:'var(--s4)'}];
-  const stack=panelsSpec('Sleep stages per night','Minutes per stage. Each bar is the night ending on that date.',{dates,aria:'Sleep stages per night',panels:[{unit:'min',h:250,series:[stage('Deep','deep','var(--s1)'),stage('Light','light','var(--s2)'),stage('REM','rem','var(--s3)'),stage('Awake','awake','var(--s4)')]}],
-    tip:i=>{const r=R[i];return `<b>Night → ${esc(fmtWD(r.date))}</b>${[['Deep',r.deep,'var(--s1)'],['Light',r.light,'var(--s2)'],['REM',r.rem,'var(--s3)'],['Awake',r.awake,'var(--s4)']].map(x=>`<div class="tr"><i class="sw" style="background:${x[2]}"></i><span>${x[0]}</span><b>${fmtNum(x[1])} min</b></div>`).join('')}<div class="tr"><span>Asleep</span><b>${fmtHM(r.tst)}</b></div><div class="tr"><span>Efficiency</span><b>${fmtNum(r.eff)} %</b></div>`;}},leg);
-  const range={title:'Sleep rhythm',sub:'Solid = asleep, light = awake in bed. Dashed lines are your medians.',legend:[{label:'Asleep',color:'var(--s1)'},{label:'Awake in bed (before / after)',color:'var(--s1)',kind:'band'}],
+  const chips=qChips('UM');
+  const stack=panelsSpec('Sleep stages per night','Minutes per stage. Each bar is the night ending on that date.',{dates,aria:'Sleep stages per night',get badges(){return badgesFor(dates,'U');},panels:[{unit:'min',h:250,series:[stage('Deep','deep','var(--s1)'),stage('Light','light','var(--s2)'),stage('REM','rem','var(--s3)'),stage('Awake','awake','var(--s4)')]}],
+    tip:i=>{const r=R[i];return `<b>Night → ${esc(fmtWD(r.date))}</b>${[['Deep',r.deep,'var(--s1)'],['Light',r.light,'var(--s2)'],['REM',r.rem,'var(--s3)'],['Awake',r.awake,'var(--s4)']].map(x=>`<div class="tr"><i class="sw" style="background:${x[2]}"></i><span>${x[0]}</span><b>${fmtNum(x[1])} min</b></div>`).join('')}<div class="tr"><span>Asleep</span><b>${fmtHM(r.tst)}</b></div><div class="tr"><span>Efficiency</span><b>${fmtNum(r.eff)} %</b></div>`;}},[...leg,...badgeLegend(dates,'U')],null,chips);
+  const base=panelsSpec('Sleep vs. your usual','Shaded band = median ± 1.5 robust SD of your own nights, dashed = median. A diamond marks a value outside the band in the unfavorable direction.',{dates,aria:'Sleep time, deep sleep and REM against your baseline',get badges(){return badgesFor(dates,'U');},panels:[
+    {label:'Sleep time',unit:'min',h:130,band:bandOf('tst','var(--s1)'),series:[{type:'line',label:'Sleep time',color:'var(--s1)',vals:R.map(r=>r.tst),fmt:fmtHM,flag:flagOf('tst',-1)}]},
+    {label:'Deep sleep',unit:'min',h:120,band:bandOf('deep','var(--s1)'),series:[{type:'line',label:'Deep sleep',color:'var(--s1)',vals:R.map(r=>r.deep),fmt:v=>fmtNum(v)+' min',flag:flagOf('deep',-1)}]},
+    {label:'REM sleep',unit:'min',h:120,band:bandOf('rem','var(--s3)'),series:[{type:'line',label:'REM sleep',color:'var(--s3)',vals:R.map(r=>r.rem),fmt:v=>fmtNum(v)+' min',flag:flagOf('rem',-1)}]}]},[...BAND_LEG,...badgeLegend(dates,'U')],null,chips);
+  const range={title:'Sleep rhythm',sub:'Solid = asleep, light = awake in bed. Dashed lines are your medians.',legend:[{label:'Asleep',color:'var(--s1)'},{label:'Awake in bed (before / after)',color:'var(--s1)',kind:'band'}],chips,
     draw:b=>drawRange(b,{rows:R}),table:()=>tableHTML(['Night → date','Lights out','Asleep','Woke up','Out of bed','Time to fall asleep'],R.map(r=>[fmtWD(r.date),fmtClock(r.startH),fmtClock(r.onset),fmtClock(r.wake24),fmtClock(r.endH),Math.round(r.lat)+' min']))};
-  const lat=panelsSpec('Time to fall asleep','Minutes between lights out and falling asleep.',{dates,aria:'Time to fall asleep',panels:[{unit:'min',h:140,refs:[{y:45,label:'45 min'}],series:[{type:'bar',label:'Time to fall asleep',color:'var(--s2)',vals:R.map(r=>r.lat),fmt:v=>Math.round(v)+' min'}]}]});
-  return `<section class="card"><div class="kv"><div><span>Median sleep time</span><b>${fmtHM(B.tst.med)}</b></div><div><span>Median deep sleep</span><b>${fmtNum(B.deep.med)} min</b></div><div><span>Median REM</span><b>${fmtNum(B.rem.med)} min</b></div><div><span>Median sleep onset</span><b>${fmtClock(B.onset.med)}</b></div><div><span>Median wake-up</span><b>${fmtClock(B.wake24.med)}</b></div><div><span>Median efficiency</span><b>${fmtNum(B.eff.med)} %</b></div></div></section>${slot(stack)}${slot(range)}${slot(lat)}`;
+  const lat=panelsSpec('Time to fall asleep','Minutes between lights out and falling asleep. A diamond marks nights above your usual range.',{dates,aria:'Time to fall asleep',panels:[{unit:'min',h:140,refs:[{y:45,label:'45 min'}],band:bandOf('lat','var(--s2)'),series:[{type:'bar',label:'Time to fall asleep',color:'var(--s2)',vals:R.map(r=>r.lat),fmt:v=>Math.round(v)+' min',flag:flagOf('lat',1)}]}]},BAND_LEG);
+  return `<section class="card"><div class="kv"><div><span>Median sleep time</span><b>${fmtHM(B.tst.med)}</b></div><div><span>Median deep sleep</span><b>${fmtNum(B.deep.med)} min</b></div><div><span>Median REM</span><b>${fmtNum(B.rem.med)} min</b></div><div><span>Median sleep onset</span><b>${fmtClock(B.onset.med)}</b></div><div><span>Median wake-up</span><b>${fmtClock(B.wake24.med)}</b></div><div><span>Median efficiency</span><b>${fmtNum(B.eff.med)} %</b></div></div></section>${slot(stack)}${slot(base)}${slot(range)}${slot(lat)}`;
 }
-function heartSeries(ds,key){return ds.vit.map(v=>v[key]);}
 function vHeart(){
   const {A,ds}=S,V=ds.vit;if(!V.length)return needFile('Vital Signs');
   const dates=V.map(v=>v.date),B=A.base,sm=Object.fromEntries(A.strain.map(s=>[s.date,s]));
-  const o={dates,aria:'Heart rate, HRV and strain index',panels:[
-    {label:'Average heart rate',unit:'bpm',h:150,band:B.hr.n>=7?{lo:B.hr.lo,hi:B.hr.hi,color:'var(--s2)'}:null,series:[{type:'line',label:'Avg heart rate',color:'var(--s2)',vals:heartSeries(ds,'hr'),fmt:v=>fmtNum(v)+' bpm'}]},
-    {label:'Average HRV',unit:'ms',h:150,band:B.hrv.n>=7?{lo:B.hrv.lo,hi:B.hrv.hi,color:'var(--s1)'}:null,series:[{type:'line',label:'Avg HRV',color:'var(--s1)',vals:heartSeries(ds,'hrv'),fmt:v=>fmtNum(v)+' ms'}]}],
-    tip:i=>{const v=V[i],s=sm[v.date];return `<b>${esc(fmtWD(v.date))}</b><div class="tr"><i class="sw" style="background:var(--s2)"></i><span>Avg HR</span><b>${fmtNum(v.hr)} bpm</b></div><div class="tr"><span>Lowest / max HR</span><b>${fmtNum(v.hrMin)} / ${fmtNum(v.hrMax)}</b></div><div class="tr"><i class="sw" style="background:var(--s1)"></i><span>Avg HRV</span><b>${fmtNum(v.hrv)} ms</b></div><div class="tr"><span>Min / max HRV</span><b>${fmtNum(v.hrvMin)} / ${fmtNum(v.hrvMax)}</b></div>${s?`<div class="tr"><span>Strain index</span><b>${s.index.toFixed(1)}</b></div>`:''}`;}};
+  const o={dates,aria:'Heart rate, HRV and strain index',get badges(){return badgesFor(dates,'PG');},panels:[
+    {label:'Average heart rate',unit:'bpm',h:150,band:bandOf('hr','var(--s2)'),series:[{type:'line',label:'Avg heart rate',color:'var(--s2)',vals:V.map(v=>v.hr),fmt:v=>fmtNum(v)+' bpm',flag:flagOf('hr',1)}]},
+    {label:'Average HRV',unit:'ms',h:150,band:bandOf('hrv','var(--s1)'),series:[{type:'line',label:'Avg HRV',color:'var(--s1)',vals:V.map(v=>v.hrv),fmt:v=>fmtNum(v)+' ms',flag:flagOf('hrv',-1)}]}],
+    tip:i=>{const v=V[i],s=sm[v.date];return `<b>${esc(fmtWD(v.date))}</b><div class="tr"><i class="sw" style="background:var(--s2)"></i><span>Avg HR</span><b>${fmtNum(v.hr)} bpm</b></div><div class="tr"><span>Lowest / max HR</span><b>${fmtNum(v.hrMin)} / ${fmtNum(v.hrMax)}</b></div><div class="tr"><i class="sw" style="background:var(--s1)"></i><span>Avg HRV</span><b>${fmtNum(v.hrv)} ms</b></div><div class="tr"><span>Min / max HRV</span><b>${fmtNum(v.hrvMin)} / ${fmtNum(v.hrvMax)}</b></div>${s?`<div class="tr"><span>Strain index</span><b>${s.index.toFixed(1)}</b></div>`:''}`;},
+    tipExtra:i=>(ds.partial||[]).includes(dates[i])?'<div class="tr"><span>Partial day, not scored</span></div>':''};
   if(A.strain.length)o.panels.push({label:'Strain index',unit:'HR up + HRV down, in SD',h:120,refs:[{y:2,label:'alert at 2'}],series:[{type:'bar',label:'Strain index',color:'var(--s7)',vals:dates.map(d=>sm[d]?Math.max(0,sm[d].index):NaN),fmt:v=>v.toFixed(1)}]});
-  const leg=[{label:'Avg heart rate',color:'var(--s2)',kind:'line'},{label:'Avg HRV',color:'var(--s1)',kind:'line'},{label:'Your usual range',color:'var(--ink2)',kind:'band'}];
+  const leg=[{label:'Avg heart rate',color:'var(--s2)',kind:'line'},{label:'Avg HRV',color:'var(--s1)',kind:'line'},...BAND_LEG];
   if(A.strain.length)leg.push({label:'Strain index',color:'var(--s7)'});
-  const spec=panelsSpec('Heart rate, HRV and strain','Shaded = median ± 1.5 robust SD of your own days. Hover for lowest/max values.',o,leg,'Strain index = how far HR is above and HRV below your own median, added up. Flagged at 2 or more.');
+  const spec=panelsSpec('Heart rate, HRV and strain','Shaded = your usual range, dashed = your median. Hover for lowest/max values.',o,[...leg,...badgeLegend(dates,'PG')],'Strain index = how far HR is above and HRV below your own median, added up. Flagged at 2 or more.',qChips('PM'));
   const lows=`<section class="card"><div class="kv"><div><span>Typical avg HR</span><b>${fmtNum(B.hr.med)} bpm</b></div><div><span>Lowest HR (resting proxy)</span><b>${fmtNum(B.hrMin.med)} bpm</b></div><div><span>Typical avg HRV</span><b>${fmtNum(B.hrv.med)} ms</b></div><div><span>Strain days flagged</span><b>${A.flags.strain.length}</b></div></div></section>`;
   return lows+slot(spec);
 }
 function vSpo2(){
   const {A,ds}=S,V=ds.vit;if(!V.length)return needFile('Vital Signs');
-  const dates=V.map(v=>v.date),F=A.flags.lowSpo2;
-  const spec=panelsSpec('SpO₂ per day','Average and lowest reading. Pulse oximeters in rings are sensitive to fit and finger position.',{dates,aria:'SpO2',panels:[{unit:'%',h:230,yMax:100,refs:[{y:90,label:'90 %'}],series:[{type:'line',label:'Avg SpO₂',color:'var(--s3)',vals:V.map(v=>v.spAvg),fmt:v=>fmtNum(v)+' %'},{type:'dot',ring:true,label:'Lowest SpO₂',color:'var(--s3)',vals:V.map(v=>v.spMin),fmt:v=>fmtNum(v)+' %'}]}]},[{label:'Average',color:'var(--s3)',kind:'line'},{label:'Lowest of the day',color:'var(--s3)',kind:'ring'}]);
-  return `<section class="card"><div class="kv"><div><span>Days with lowest under 90 %</span><b>${F.n} of ${F.total}</b></div><div><span>Lowest reading</span><b>${fmtNum(Math.min(...V.map(v=>v.spMin)))} %</b></div><div><span>Typical average</span><b>${fmtNum(A.base.spAvg.med)} %</b></div></div><p class="sub" style="margin-top:8px">${F.n>=3?'Repeated lows are worth a second measurement with a fingertip oximeter. One-off dips are often artifacts.':'Occasional dips are common and usually harmless. Keep an eye on repeats.'}</p></section>${slot(spec)}`;
+  const dates=V.map(v=>v.date),F=A.flags.lowSpo2,rm=Object.fromEntries(F.roll.map(r=>[r.date,r.count]));
+  const spec=panelsSpec('SpO₂ per day and rolling counter','Average and lowest reading, plus how many of the last 7 days dipped under 90 %. Ring SpO₂ is sensitive to fit and finger position.',{dates,aria:'SpO2 and rolling counter',get badges(){return badgesFor(dates,'PG');},panels:[
+    {label:'SpO₂',unit:'%',h:210,yMax:100,refs:[{y:90,label:'90 %'}],band:bandOf('spAvg','var(--s3)'),series:[{type:'line',label:'Avg SpO₂',color:'var(--s3)',vals:V.map(v=>v.spAvg),fmt:v=>fmtNum(v)+' %',flag:flagOf('spAvg',-1)},{type:'dot',ring:true,label:'Lowest SpO₂',color:'var(--s3)',vals:V.map(v=>v.spMin),fmt:v=>fmtNum(v)+' %'}]},
+    {label:'Days under 90 % in the 7 days up to each date',unit:'days',h:110,yMax:7,ticks:3,tickFmt:v=>Number.isInteger(v)?String(v):'',refs:[{y:3,label:'watch at 3'}],series:[{type:'bar',label:'Days under 90 % (last 7)',color:'var(--s3)',vals:dates.map(d=>rm[d]??NaN),fmt:v=>Math.round(v)+' of 7',flag:{dir:1,lo:0,hi:2}}]}]},
+    [{label:'Average',color:'var(--s3)',kind:'line'},{label:'Lowest of the day',color:'var(--s3)',kind:'ring'},...BAND_LEG,...badgeLegend(dates,'PG')],'Counter diamonds mark windows with 3 or more days under 90 %.',qChips('PM'));
+  const l=F.latest;
+  return `<section class="card"><div class="kv"><div><span>Last 7 days under 90 %</span><b>${l?`${l.count} of ${l.total}`:'–'}</b></div><div><span>Worst 7-day window</span><b>${F.worst} days${F.worstDate?` (to ${esc(fmtDate(F.worstDate))})`:''}</b></div><div><span>Whole period</span><b>${F.n} of ${F.total} days</b></div><div><span>Lowest reading</span><b>${fin(F.min)?fmtNum(F.min)+' %':'–'}</b></div></div><p class="sub" style="margin-top:8px">${F.latestFlag?'Three or more dips in the last 7 days: worth a second measurement with a fingertip oximeter.':F.flag?'An earlier week had 3 or more dips; the latest 7 days are below that.':'Occasional dips are common and usually harmless. Keep an eye on repeats.'}</p></section>${slot(spec)}`;
 }
 function vActivity(){
   const {A,ds}=S,a=ds.act;if(!a.length)return needFile('Activity');
   const dates=a.map(x=>x.date),hol=a.map(x=>x.partial);
-  const spec=panelsSpec('Steps and energy','Hollow bars are partial days (ring worn late) and are excluded from your stats.',{dates,aria:'Steps and calories',panels:[
-    {label:'Steps',unit:'per day',h:170,refs:[{y:6000,label:'6,000'}],tickFmt:fmtTick,series:[{type:'bar',label:'Steps',color:'var(--s7)',hollow:hol,vals:a.map(x=>x.steps),fmt:v=>fmtSteps(v)}]},
-    {label:'Total energy',unit:'kcal, includes basal',h:130,tickFmt:fmtTick,series:[{type:'bar',label:'Total energy',color:'var(--s4)',hollow:hol,vals:a.map(x=>x.kcal),fmt:v=>fmtSteps(v)+' kcal'}]}]},
-    [{label:'Steps',color:'var(--s7)'},{label:'Total energy',color:'var(--s4)'}]);
+  const spec=panelsSpec('Steps and energy','Hollow bars are partial days (ring worn late). They are not scored and not part of your baseline.',{dates,aria:'Steps and calories',get badges(){return badgesFor(dates,'PG');},panels:[
+    {label:'Steps',unit:'per day',h:170,refs:[{y:6000,label:'6,000'}],tickFmt:fmtTick,band:bandOf('steps','var(--s7)'),series:[{type:'bar',label:'Steps',color:'var(--s7)',hollow:hol,vals:a.map(x=>x.steps),fmt:v=>fmtSteps(v),flag:flagOf('steps',-1)}]},
+    {label:'Total energy',unit:'kcal, includes basal',h:130,tickFmt:fmtTick,band:bandOf('kcal','var(--s4)'),series:[{type:'bar',label:'Total energy',color:'var(--s4)',hollow:hol,vals:a.map(x=>x.kcal),fmt:v=>fmtSteps(v)+' kcal'}]}]},
+    [{label:'Steps',color:'var(--s7)'},{label:'Total energy',color:'var(--s4)'},...BAND_LEG,...badgeLegend(dates,'PG')],null,qChips('P'));
   const F=A.flags;
   return `<section class="card"><div class="kv"><div><span>Average steps</span><b>${fin(F.avgSteps)?fmtSteps(F.avgSteps):'–'}</b></div><div><span>Days with 6,000+</span><b>${F.days6k??'–'} of ${F.actDays??'–'}</b></div><div><span>Best day</span><b>${fmtSteps(Math.max(...a.filter(x=>!x.partial).map(x=>x.steps)))}</b></div></div></section>${slot(spec)}`;
 }
 
-function dayInfo(d){
-  const {A,ds}=S,r=ds.rows.find(x=>x.date===d),v=ds.vmap[d],a=ds.amap[d];
-  const items=[];
-  if(r){items.push(['Sleep (night ending)',fmtHM(r.tst)],['Deep / REM',`${fmtNum(r.deep)} / ${fmtNum(r.rem)} min`],['Asleep at',fmtClock(r.onset)],['Time to fall asleep',Math.round(r.lat)+' min']);}
-  if(v){items.push(['Avg HR (lowest / max)',`${fmtNum(v.hr)} (${fmtNum(v.hrMin)} / ${fmtNum(v.hrMax)}) bpm`],['Avg HRV',fmtNum(v.hrv)+' ms'],['SpO₂ avg / lowest',`${fmtNum(v.spAvg)} / ${fmtNum(v.spMin)} %`]);}
-  if(a)items.push(['Steps',fmtSteps(a.steps)+(a.partial?' (partial day)':'')],['Energy',fmtSteps(a.kcal)+' kcal']);
-  return `<h3 style="margin-bottom:10px">${esc(fmtWD(d))}</h3><div class="daydetail">${items.map(i=>`<div><span>${esc(i[0])}</span><b>${esc(i[1])}</b></div>`).join('')||'<p class="sub">No data for this day.</p>'}</div>`;
+function scatterSlot(t){
+  const c=t.c,fxx=FIELDS[t.pair.x],fyy=FIELDS[t.pair.y],fx=fieldFmt(t.pair.x),fy=fieldFmt(t.pair.y),nm=`${fxx.label} → ${fyy.label}`;
+  const spec={title:'',draw:b=>drawScatter(b,{pts:c.pts,fx:v=>fxx.tick?fxx.tick(v):fxx.fmt?fx(v):fmtNum(v),fy:v=>fyy.tick?fyy.tick(v):fyy.fmt?fy(v):fmtNum(v),xl:fxx.label+(fxx.unit?` (${fxx.unit})`:''),yl:fyy.label+(fyy.unit?` (${fyy.unit})`:''),aria:nm,highlight:S.A.outlier&&S.A.outlier.row.date}),
+    table:()=>tableHTML(['Date',fxx.label,fyy.label],c.pts.map(p=>[fmtWD(p.date),fx(p.x),fy(p.y)])),title2:nm};
+  const id='c'+S.mounts.length;S.mounts.push({id,spec,scatter:true});
+  return `<div class="card chartcard scat" id="${id}" style="border-top-left-radius:0;border-top-right-radius:0"></div>`;
+}
+function corrBlock(t,title,extra){
+  const c=t.c,pre=c.n<14;
+  return `<div><div class="card" style="padding-bottom:6px;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:0">${title?`<h3>${esc(title)}</h3>`:''}${pre?'<p class="note" style="margin:6px 0"><b>Preliminary:</b> fewer than 14 points.</p>':''}<div class="stat"><span>ρ <b>${fmtRho(c.rho)}</b></span><span>n <b>${c.n}</b></span><span>p <b>${c.p<0.001?'<0.001':c.p.toFixed(3)}</b></span><span>${esc(t.pair.lag)}</span></div><div>${pill(t.conf==='low'||t.conf==='none'?'gray':t.conf==='medium'?'amber':'green','Confidence: '+t.conf)}</div><p class="sub" style="margin-top:8px">${esc(t.text)}</p>${extra||''}</div>${S.scat[t.pair.id]||''}</div>`;
+}
+function fixedCard(id,title,sub,unit,extra){
+  const t=S.A.cget(id),c=t.c,n=c.n,open=n>=14||S.prelim[id];
+  const head=`<h3>${esc(title)}</h3><p class="sub">${esc(sub)}</p>`;
+  if(!open)return `<div class="card lock">${head}<div class="meter" role="img" aria-label="${n} of 14 ${unit}"><i style="width:${Math.min(100,n/14*100)}%"></i></div><p><b>Locked: ${n} of 14 ${unit} needed.</b> Scatter plots with fewer than 14 points can mislead, so this one unlocks at 14.${c.insufficient?'':` Early reading: ρ ${fmtRho(c.rho)} (n=${n}, ${t.conf} confidence).`}</p>${extra?`<p>${extra}</p>`:''}<button class="btn ghost small" data-prelim="${id}" type="button">Show preliminary chart</button></div>`;
+  if(c.insufficient)return `<div class="card">${head}<p class="empty">Not enough paired points (n=${n}).</p></div>`;
+  return corrBlock(t,title,extra);
 }
 function vConnect(){
   const {A,ds}=S;const R=ds.rows;
   const all=[...ds.act.map(x=>x.date),...ds.vit.map(x=>x.date),...R.map(x=>x.date)].sort();
   if(!all.length)return needFile('data');
-  const dates=dateRange(all[0],all[all.length-1]);
+  const dates=dateRange(all[0],all[all.length-1]),B=A.base;
   const g=(arr,k)=>{const m=Object.fromEntries(arr.map(x=>[x.date,x[k]]));return dates.map(d=>m[d]??NaN);};
-  const B=A.base;if(S.sel==null||!dates.includes(S.sel))S.sel=A.outlier?A.outlier.row.date:dates[dates.length-1];
+  if(S.sel==null||!dates.includes(S.sel))S.sel=A.outlier?A.outlier.row.date:dates[dates.length-1];
   const panels=[];
   if(R.length)panels.push({label:'Sleep stages',unit:'min',h:110,series:[['Deep','deep','var(--s1)'],['Light','light','var(--s2)'],['REM','rem','var(--s3)'],['Awake','awake','var(--s4)']].map(([l,k,c])=>({type:'stack',label:l,color:c,vals:g(R,k),fmt:v=>fmtNum(v)+' min'}))});
-  if(ds.vit.length)panels.push({label:'Avg heart rate',unit:'bpm',h:90,band:B.hr.n>=7?{lo:B.hr.lo,hi:B.hr.hi,color:'var(--s2)'}:null,series:[{type:'line',label:'Avg HR',color:'var(--s2)',vals:g(ds.vit,'hr'),fmt:v=>fmtNum(v)+' bpm'}]},
-    {label:'Avg HRV',unit:'ms',h:90,band:B.hrv.n>=7?{lo:B.hrv.lo,hi:B.hrv.hi,color:'var(--s1)'}:null,series:[{type:'line',label:'Avg HRV',color:'var(--s1)',vals:g(ds.vit,'hrv'),fmt:v=>fmtNum(v)+' ms'}]},
-    {label:'SpO₂',unit:'%',h:90,yMax:100,refs:[{y:90,label:'90 %'}],series:[{type:'line',label:'Avg SpO₂',color:'var(--s3)',vals:g(ds.vit,'spAvg'),fmt:v=>fmtNum(v)+' %'},{type:'dot',ring:true,label:'Lowest SpO₂',color:'var(--s3)',vals:g(ds.vit,'spMin'),fmt:v=>fmtNum(v)+' %'}]});
-  if(ds.act.length)panels.push({label:'Steps',unit:'per day',h:90,tickFmt:fmtTick,series:[{type:'bar',label:'Steps',color:'var(--s7)',hollow:dates.map(d=>!!(ds.amap[d]&&ds.amap[d].partial)),vals:g(ds.act,'steps'),fmt:fmtSteps}]});
-  const tl=panelsSpec('Day timeline','All signals on one date axis. Tap a day for details.',{dates,aria:'Day timeline',panels,selected:S.sel,onPick:i=>{S.sel=dates[i];const e=$('#daydetail');if(e)e.innerHTML=dayInfo(S.sel);}},
-    [{label:'Deep',color:'var(--s1)'},{label:'Light',color:'var(--s2)'},{label:'REM',color:'var(--s3)'},{label:'Awake',color:'var(--s4)'}],'Sleep bars show the night ending on that date. Each row has its own scale, so signals are never plotted against two axes.');
-  // we need stats above each chart: build via wrapper
-  const corrBlocks=A.topCorr.map((t,i)=>{const c=t.c;return `<div><div class="card" style="padding-bottom:6px;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:0"><div class="stat"><span>ρ <b>${fmtRho(c.rho)}</b></span><span>n <b>${c.n}</b></span><span>p <b>${c.p<0.001?'<0.001':c.p.toFixed(3)}</b></span><span>${esc(t.pair.lag)}</span></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${pill(t.conf==='low'||t.conf==='none'?'gray':t.conf==='medium'?'amber':'green','Confidence: '+t.conf)}</div><p class="sub" style="margin-top:8px">${esc(t.text)}</p></div>${corrCards[i]}</div>`;});
-  return `${slot(tl)}<section class="card"><div id="daydetail">${dayInfo(S.sel)}</div></section>`
+  if(ds.vit.length)panels.push({label:'Avg heart rate',unit:'bpm',h:90,band:bandOf('hr','var(--s2)'),series:[{type:'line',label:'Avg HR',color:'var(--s2)',vals:g(ds.vit,'hr'),fmt:v=>fmtNum(v)+' bpm',flag:flagOf('hr',1)}]},
+    {label:'Avg HRV',unit:'ms',h:90,band:bandOf('hrv','var(--s1)'),series:[{type:'line',label:'Avg HRV',color:'var(--s1)',vals:g(ds.vit,'hrv'),fmt:v=>fmtNum(v)+' ms',flag:flagOf('hrv',-1)}]},
+    {label:'SpO₂',unit:'%',h:90,yMax:100,refs:[{y:90,label:'90 %'}],band:bandOf('spAvg','var(--s3)'),series:[{type:'line',label:'Avg SpO₂',color:'var(--s3)',vals:g(ds.vit,'spAvg'),fmt:v=>fmtNum(v)+' %'},{type:'dot',ring:true,label:'Lowest SpO₂',color:'var(--s3)',vals:g(ds.vit,'spMin'),fmt:v=>fmtNum(v)+' %'}]});
+  if(ds.act.length)panels.push({label:'Steps',unit:'per day',h:90,tickFmt:fmtTick,band:bandOf('steps','var(--s7)'),series:[{type:'bar',label:'Steps',color:'var(--s7)',hollow:dates.map(d=>!!(ds.amap[d]&&ds.amap[d].partial)),vals:g(ds.act,'steps'),fmt:fmtSteps,flag:flagOf('steps',-1)}]});
+  const P=new Set(ds.partial||[]);
+  const tl=panelsSpec('Day timeline','All signals on one date axis. Tap a day for details and to add context.',{dates,aria:'Day timeline',badgeStrip:true,get badges(){return badgesFor(dates,'PUGN');},get selected(){return S.sel;},panels,
+    onPick:i=>{S.sel=dates[i];const e=$('#daydetail');if(e){e.innerHTML=dayInfo(S.sel);bindCtx(S.sel);}},
+    tipExtra:i=>{const d=dates[i],n=S.notes[d];let h='';if(P.has(d))h+='<div class="tr"><span>Partial day, not scored</span></div>';if(hasNote(n))h+=`<div class="tr"><span>Note: ${esc(noteText(n))}</span></div>`;if(S.A.flagMap[d])h+=`<div class="tr"><span>Flagged: ${esc(S.A.flagMap[d].join(', '))}</span></div>`;return h;}},
+    [{label:'Deep',color:'var(--s1)'},{label:'Light',color:'var(--s2)'},{label:'REM',color:'var(--s3)'},{label:'Awake',color:'var(--s4)'},...BAND_LEG,...badgeLegend(dates,'PUGN')],'Sleep bars show the night ending on that date. Each row has its own scale, so signals are never plotted against two axes.',qChips('PUGM'));
+  S.timeline=tl;
+  const corrBlocks=A.topCorr.map(t=>corrBlock(t));
+  const stepsGate=A.stepsGate.ok?`<b>Step target unlocked:</b> 21+ days and ρ ≥ 0.3 (ρ ${fmtRho(A.stepsGate.rho)}, n=${A.stepsGate.n}). The Coach may suggest a numeric target.`:`<b>Step target locked:</b> needs 21+ days and ρ ≥ 0.3 (yours: ${fin(A.stepsGate.rho)?`ρ ${fmtRho(A.stepsGate.rho)}, `:''}n=${A.stepsGate.n}). Until then the Coach suggests walks without a number.`;
+  return `${slot(tl)}<section class="card" id="daycard"><div id="daydetail">${dayInfo(S.sel)}</div></section>`
    +(A.outlier?`<section class="card"><h2>Outlier case</h2><p class="lead" style="margin-top:8px">${esc(Engine.outlierText(A))}</p><p class="note">Which came first, the poor night or the strain, cannot be told from daily numbers alone. Treat it as a case to learn from, not proof.</p></section>`:'')
-   +`<h2 style="margin-top:6px">Strongest relationships</h2><div class="grid2">${corrBlocks.join('')}</div>`
+   +`<h2 style="margin-top:6px">Your levers: sleep timing and activity</h2><div class="grid2">${fixedCard('onset-rem','Sleep onset → REM sleep','Does a later bedtime cost you REM?','nights')}${fixedCard('onset-hrv','Sleep onset → HRV','Does a later bedtime show up in HRV the next morning?','nights')}${fixedCard('steps-deep','Steps → deep sleep that night','Do more active days give you deeper sleep?','days',stepsGate)}</div>`
+   +`<h2 style="margin-top:6px">Other strong relationships</h2><div class="grid2">${corrBlocks.join('')||'<p class="empty">Nothing else stands out yet.</p>'}</div>`
    +`<details><summary>All ${A.corr.length} tested pairs (raw p-values, no correction for testing many pairs)</summary><div style="margin-top:10px">${tableHTML(['Pair','Timing','ρ','n','p','Confidence'],A.corr.map(t=>[`${FIELDS[t.pair.x].label} → ${FIELDS[t.pair.y].label}`,t.pair.lag,t.c.insufficient?'–':fmtRho(t.c.rho),t.c.n,t.c.insufficient?'–':t.c.p.toFixed(3),t.conf]))}</div></details>`;
 }
-let corrCards=[];
 
+/* ---------- coach: experiment + weekly ---------- */
+function baFigure(m){
+  const cap=`<figcaption><b>${esc(m.label)}</b></figcaption>`;
+  if(!fin(m.before)||!fin(m.after))return `<figure class="ba">${cap}<p class="sub">Not enough nights (before ${m.nb}, after ${m.na}).</p></figure>`;
+  const org=m.origin&&Math.min(m.before,m.after)>m.origin+0.5?m.origin:0;
+  const top=Math.max(m.before,m.after)-org,sc=v=>Math.max(2,(v-org)/(top*1.2||1)*78);
+  const W=170,Hh=118,b0=Hh-22,bw=44,x1=26,x2=100;
+  const svg=`<svg width="100%" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="${esc(m.label)}: before ${esc(m.fmt(m.before))}, after ${esc(m.fmt(m.after))}"><line x1="8" x2="${W-8}" y1="${b0}" y2="${b0}" stroke="var(--axis)"/>
+   <path d="${topPath(x1,b0-sc(m.before),bw,sc(m.before),4)}" fill="var(--muted)"/><path d="${topPath(x2,b0-sc(m.after),bw,sc(m.after),4)}" fill="var(--s1)"/>
+   <text x="${x1+bw/2}" y="${b0-sc(m.before)-5}" text-anchor="middle" style="fill:var(--ink);font-size:11.5px;font-weight:600">${esc(m.fmt(m.before))}</text><text x="${x2+bw/2}" y="${b0-sc(m.after)-5}" text-anchor="middle" style="fill:var(--ink);font-size:11.5px;font-weight:600">${esc(m.fmt(m.after))}</text>
+   <text x="${x1+bw/2}" y="${Hh-6}" text-anchor="middle">Before (${m.nb})</text><text x="${x2+bw/2}" y="${Hh-6}" text-anchor="middle">After (${m.na})</text></svg>`;
+  return `<figure class="ba">${cap}${svg}<p class="dl">${m.arrow} ${esc(m.word)} (${esc(m.deltaText)})</p>${org?`<p class="dl">Axis starts at ${esc(m.fmt(org))}</p>`:''}</figure>`;
+}
+function meterRow(r){if(!r)return '';return `<div class="exprow"><span>${esc(r.label)}: <b>${r.done} of ${r.total}</b> (need ${r.need})</span><div class="meter"><i style="width:${r.total?Math.min(100,r.done/Math.max(r.need,1)*100):0}%"></i></div></div>`;}
+function expHTML(){
+  const {A}=S,exp=A.coach.experiment,def=Engine.defaultExpStart(A),start=S.expStart||def;
+  const evening=Object.fromEntries(Object.keys(S.notes).filter(d=>hasNote(S.notes[d])).map(d=>[d,true]));
+  const ev=start?Engine.evalExperiment(A,exp,start,evening):null;
+  const vcls={success:'green',done:'green',progress:'gray',unfair:'amber',no:'amber'};
+  const last=A.ds.rows.length?A.ds.rows[A.ds.rows.length-1].evening:null;
+  return `<section class="card" id="exp"><h3>Experiment: before vs. after</h3><p style="margin-top:6px"><b>${esc(exp.title)}</b></p><p class="sub">Success: ${esc(exp.success)}</p>
+  <div class="formgrid" style="margin-top:12px;align-items:end"><label for="expStart">Start evening<input type="date" id="expStart" value="${esc(start||'')}"></label><div class="btnrow" style="margin:0">${def?`<button class="btn ghost small" type="button" data-expset="${def}">Use suggested date (${esc(fmtDate(def))})</button>`:''}</div></div>
+  ${ev?`<p class="verdict">${pill(vcls[ev.verdict],ev.word)}</p><p class="sub">${last&&start<=last?`Compares the ${ev.before.length} nights before ${esc(fmtDate(start))} with ${ev.after.length} nights from then on. ${A.ds.rows.length&&start<last?'This is a retrospective check on data you already have.':''}`:'The start date is after your last night. Run the experiment, then upload your next export to see the result.'}</p>${meterRow(ev.adh)}${meterRow(ev.out)}<div class="baGrid">${ev.metrics.map(baFigure).join('')}</div><p class="note">Grey = average of the nights before, blue = average from the start date on. Small samples: read this as a hint.</p>`:'<p class="sub" style="margin-top:10px">Needs at least 8 nights of data to suggest a start date. You can also pick a date yourself.</p>'}</section>`;
+}
+function weeklyHTML(){
+  const W=S.A.weekly;
+  if(!W)return `<section class="card"><h3>Weekly recap</h3><p class="sub" style="margin-top:6px">Needs at least 8 nights. The recap compares your last 7 nights with the 7 before.</p></section>`;
+  const exp=S.A.coach.experiment;
+  return `<section class="card"><h3>Weekly recap</h3><p class="sub" style="margin:4px 0 10px">Last 7 nights (${esc(fmtDate(W.from))} to ${esc(fmtDate(W.to))}) vs. the ${W.nPrev} before (${esc(fmtDate(W.prevFrom))} to ${esc(fmtDate(W.prevTo))}). Words say better or worse for your health, not just up or down.</p>
+  ${tableHTML(['Metric','Before','Last 7','Change'],W.rows.map(r=>[r.label,r.prev,r.last,`${r.arrow} ${r.word} (${r.deltaText})`]))}
+  <p style="margin-top:12px"><b>Next experiment, from your strongest finding:</b> ${esc(exp.title)}. Starts ${esc(fmtWD(W.nextMonday))}.</p><p class="btnrow"><button class="btn ghost small" type="button" data-expset="${W.nextMonday}">Start on that Monday</button></p></section>`;
+}
 function vCoach(){
-  const {A}=S,C=A.coach,P=S.profile;
-  const name=S.ds.meta.name;
+  const {A}=S,C=A.coach,P=S.profile,name=S.ds.meta.name;
   const f=(id,l,ph,type='input')=>`<label for="${id}">${l}${type==='area'?`<textarea id="${id}" data-p="${id}" rows="1" placeholder="${ph||''}">${esc(P[id]||'')}</textarea>`:`<input id="${id}" data-p="${id}" value="${esc(P[id]||'')}" placeholder="${ph||''}">`}</label>`;
-  return `<section class="card"><div class="rowbar"><h2>${name?`${esc(name)}, here is your plan`:'Your plan'}</h2><button class="btn small" data-copy type="button">Copy report</button></div>
+  return `<section class="card"><div class="rowbar"><h2>${name&&name!=='Demo'?`${esc(name)}, here is your plan`:'Your plan'}</h2><button class="btn small" data-copy type="button">Copy report</button></div>
   ${P.goals?`<p class="lead">Your goal: ${esc(P.goals)}. The steps below are picked from your own data and point at that goal.</p>`:'<p class="lead">Three steps for the next 7 days, picked from what stands out in your own data.</p>'}
   <ol class="steps" style="margin-top:14px;padding-left:20px;list-style:decimal">${C.actions.map(a=>`<li><b>${esc(a.title)}</b><span>${esc(a.how)}</span><em>Measure: ${esc(a.measure)}</em><em>Why: ${esc(a.why)}</em></li>`).join('')}</ol></section>
-  <div class="grid2"><section class="card"><h3>Mini-experiment</h3><p style="margin-top:6px"><b>${esc(C.experiment.title)}</b></p><p class="sub" style="margin-top:4px">Success: ${esc(C.experiment.success)}</p></section>
-  <section class="card"><h3>When to see a doctor</h3><ul class="bul" style="margin-top:8px">${C.doctor.map(d=>`<li>${esc(d)}</li>`).join('')}${P.conditions?`<li>You listed: ${esc(P.conditions)}. Share these trends with whoever treats you before changing medication or training.</li>`:''}</ul></section></div>
+  ${expHTML()}${weeklyHTML()}
+  <section class="card"><h3>When to see a doctor</h3><ul class="bul" style="margin-top:8px">${C.doctor.map(d=>`<li>${esc(d)}</li>`).join('')}${P.conditions?`<li>You listed: ${esc(P.conditions)}. Share these trends with whoever treats you before changing medication or training.</li>`:''}</ul></section>
   <section class="card"><h3>Questions that would sharpen the picture</h3><ul class="bul" style="margin-top:8px">${C.questions.map(q=>`<li>${esc(q)}</li>`).join('')}</ul></section>
   <section class="card"><h3>About you (optional)</h3><p class="sub" style="margin-bottom:10px">Stored only in this browser. It tailors the wording and is never required.</p><div class="formgrid">${f('age','Age')}<label for="sex">Sex<select id="sex" data-p="sex">${['','Female','Male','Other / prefer not to say'].map(o=>`<option ${P.sex===o?'selected':''}>${o}</option>`).join('')}</select></label>${f('hw','Height / weight')}${f('goals','Goals','e.g. sleep better, more energy','area')}${f('conditions','Conditions / medication','','area')}${f('lifestyle','Alcohol, caffeine, training lately','','area')}</div></section>`;
 }
 function vIdeas(){
   const {A}=S;
-  return `<section class="card"><h2>What an app should show you</h2><p class="sub" style="margin:4px 0 6px">Prioritized from what actually stood out in your data.</p>${A.ideas.map(i=>`<div class="idea"><span class="prio ${i.prio}">${i.prio==='must'?'Must-have':'Nice-to-have'}</span><div><h3>${esc(i.title)}</h3></div><dl><dt>Chart</dt><dd>${esc(i.chart)}</dd><dt>Why for you</dt><dd>${esc(i.why)}</dd><dt>Insight rule</dt><dd>${esc(i.rule)}</dd></dl></div>`).join('')}</section>`;
+  return `<section class="card"><h2>What an app should show you</h2><p class="sub" style="margin:4px 0 6px">Prioritized from what actually stood out in your data. Every idea below is built into this app; "In this app" says where.</p>${A.ideas.map(i=>`<div class="idea"><span class="prio ${i.prio}">${i.prio==='must'?'Must-have':'Nice-to-have'}</span><div><h3>${esc(i.title)}</h3></div><dl><dt>Chart</dt><dd>${esc(i.chart)}</dd><dt>Why for you</dt><dd>${esc(i.why)}</dd><dt>Insight rule</dt><dd>${esc(i.rule)}</dd><dt>In this app</dt><dd>${esc(i.where)}</dd></dl></div>`).join('')}</section>`;
 }
 
 /* ---------- render ---------- */
 const TABS=[['overview','Overview',vOverview],['sleep','Sleep',vSleep],['heart','Heart & HRV',vHeart],['spo2','SpO₂',vSpo2],['activity','Activity',vActivity],['connect','Connections',vConnect],['coach','Coach',vCoach],['ideas','App ideas',vIdeas]];
 function renderTabs(){$('#tabs').innerHTML=TABS.map(([id,l])=>`<button role="tab" type="button" data-t="${id}" aria-selected="${id===S.tab}">${l}</button>`).join('');}
 function render(){
-  renderTabs();hideTip();S.mounts=[];
+  renderTabs();hideTip();S.mounts=[];S.scat={};
   const view=$('#view');
   if(!S.A){view.innerHTML='<div class="card"><p class="empty">Drop your data.zip above to begin.</p></div>';return;}
-  const fn=TABS.find(t=>t[0]===S.tab)[2];
   if(S.tab==='connect'){
-    // build correlation chart slots first so their ids exist
-    corrCards=S.A.topCorr.map(t=>{const c=t.c,fxx=FIELDS[t.pair.x],fyy=FIELDS[t.pair.y],fx=Engine.fieldFmt(t.pair.x),fy=Engine.fieldFmt(t.pair.y);
-      const nm=`${fxx.label} → ${fyy.label}`;
-      const spec={title:'',legend:null,draw:b=>drawScatter(b,{pts:c.pts,fx:v=>fxx.tick?fxx.tick(v):fxx.fmt?fx(v):fmtNum(v),fy:v=>fyy.tick?fyy.tick(v):fyy.fmt?fy(v):fmtNum(v),xl:fxx.label+(fxx.unit?` (${fxx.unit})`:''),yl:fyy.label+(fyy.unit?` (${fyy.unit})`:''),aria:nm,highlight:S.A.outlier&&S.A.outlier.row.date}),
-        table:()=>tableHTML(['Date',fxx.label,fyy.label],c.pts.map(p=>[fmtWD(p.date),fx(p.x),fy(p.y)])),title2:nm};
-      const id='c'+S.mounts.length;S.mounts.push({id,spec,scatter:true});return `<div class="card chartcard scat" id="${id}" style="border-top-left-radius:0;border-top-right-radius:0"></div>`;});
+    S.A.topCorr.forEach(t=>{S.scat[t.pair.id]=scatterSlot(t);});
+    S.A.fixedIds.forEach(id=>{const t=S.A.cget(id);if(!t.c.insufficient&&(t.c.n>=14||S.prelim[id]))S.scat[id]=scatterSlot(t);});
   }
-  view.innerHTML=fn();
+  view.innerHTML=TABS.find(t=>t[0]===S.tab)[2]();
   S.mounts.forEach(m=>{const host=document.getElementById(m.id);if(!host)return;if(m.scatter)mountScatter(host,m.spec);else mountCard(host,m.spec);});
   view.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',copyReport));
-  view.querySelectorAll('[data-p]').forEach(el=>el.addEventListener('change',()=>{S.profile[el.dataset.p]=el.value;try{localStorage.setItem('rc-profile',JSON.stringify(S.profile));}catch(e){}if(S.tab==='coach')render();}));
+  view.querySelectorAll('[data-p]').forEach(el=>el.addEventListener('change',()=>{S.profile[el.dataset.p]=el.value;ls.set('rc-profile',S.profile);if(S.tab==='coach')render();}));
+  view.querySelectorAll('[data-ctx]').forEach(b=>b.addEventListener('click',()=>{S.sel=b.dataset.ctx;S.tab='connect';render();requestAnimationFrame(()=>{const e=$('#daycard');if(e)e.scrollIntoView({behavior:'smooth',block:'center'});});}));
+  view.querySelectorAll('[data-prelim]').forEach(b=>b.addEventListener('click',()=>{S.prelim[b.dataset.prelim]=true;render();}));
+  view.querySelectorAll('[data-expset]').forEach(b=>b.addEventListener('click',()=>{S.expStart=b.dataset.expset;ls.set('rc-exp-start',S.expStart);render();}));
+  const es=$('#expStart');if(es)es.addEventListener('change',()=>{S.expStart=es.value||null;ls.set('rc-exp-start',S.expStart);render();});
+  if(S.tab==='connect')bindCtx(S.sel);
 }
 function mountScatter(host,spec){
   host.innerHTML=`<div class="chead"><div><h3 style="font-size:14px">${esc(spec.title2)}</h3></div><div class="seg" role="group" aria-label="Chart or table"><button type="button" data-v="chart" aria-pressed="true">Chart</button><button type="button" data-v="table" aria-pressed="false">Table</button></div></div><div class="cbody"></div><p class="note">Dashed line: straight-line guide, not a prediction. Ringed point: the outlier case.</p>`;
@@ -1002,7 +1208,7 @@ function mountScatter(host,spec){
 /* ---------- copy, toast ---------- */
 function toast(t){let e=$('#toast');if(e)e.remove();e=document.createElement('div');e.id='toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),2200);}
 function copyReport(){
-  const md=Engine.reportMarkdown(S.A,S.profile);
+  const md=Engine.reportMarkdown(S.A,S.profile,S.notes);
   const fallback=()=>{const m=document.createElement('div');m.id='modal';m.innerHTML=`<div class="box" role="dialog" aria-label="Report"><b>Select all and copy</b><textarea id="mdout" readonly></textarea><button class="btn" type="button">Close</button></div>`;document.body.appendChild(m);const t=m.querySelector('textarea');t.value=md;t.focus();t.select();m.querySelector('button').onclick=()=>m.remove();};
   try{navigator.clipboard.writeText(md).then(()=>toast('Report copied'),fallback);}catch(e){fallback();}
 }
@@ -1012,7 +1218,7 @@ function setStatus(t,err){const s=$('#status');s.textContent=t||'';s.className=e
 function chips(ds,demo,found){
   const c=[];
   if(demo)c.push('<span class="chip demo"><b>Demo data</b> upload your zip to replace</span>');
-  if(ds.meta.name)c.push(`<span class="chip">Name <b>${esc(ds.meta.name)}</b></span>`);
+  if(ds.meta.name&&!(demo&&ds.meta.name==='Demo'))c.push(`<span class="chip">Name <b>${esc(ds.meta.name)}</b></span>`);
   if(ds.meta.from)c.push(`<span class="chip">Export <b>${esc(fmtDate(ds.meta.from))} to ${esc(fmtDate(ds.meta.to))}</b></span>`);
   c.push(`<span class="chip">Data present <b>${esc(fmtDate(ds.from))} to ${esc(fmtDate(ds.to))}</b></span>`);
   (found||[]).forEach(f=>c.push(`<span class="chip">${esc(f)}</span>`));
@@ -1020,7 +1226,7 @@ function chips(ds,demo,found){
 }
 function load(texts,meta,demo,found){
   const ds=Engine.buildDataset(texts,meta);
-  S.ds=ds;S.A=Engine.analyze(ds);S.demo=demo;S.sel=null;
+  S.ds=ds;S.A=Engine.analyze(ds);S.demo=demo;S.sel=null;S.prelim={};
   chips(ds,demo,found);render();
 }
 function loadDemo(){load({activity:[DEMO.activity],sleep:[DEMO.sleep],vitals:[DEMO.vitals]},{name:DEMO.name,from:DEMO.from,to:DEMO.to},true,['Activity','Sleep','Vital Signs']);setStatus('');}
@@ -1045,9 +1251,10 @@ async function handleFiles(list){
       const m=/^(?:Activity|Sleep|Vital Signs)-(.+)-(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})\.csv$/i.exec(it.name);if(m&&!meta.name)meta={name:m[1],from:m[2],to:m[3]};});
     const miss=['activity','sleep','vitals'].filter(k=>!texts[k].length);
     if(miss.length===3)throw new Error('No Activity, Sleep or Vital Signs file recognised. File names should start with "Activity-", "Sleep-" or "Vital Signs-".');
+    S.tab='overview';
     load(texts,meta,false,found.map(f=>f.split('-')[0]).filter((v,i,a)=>a.indexOf(v)===i));
     setStatus(miss.length?`Loaded. Missing: ${miss.map(k=>({activity:'Activity',sleep:'Sleep',vitals:'Vital Signs'}[k])).join(', ')}.`:'Loaded. Everything stays in this browser.');
-    S.tab='overview';render();window.scrollTo({top:0,behavior:'smooth'});
+    window.scrollTo({top:0,behavior:'smooth'});
   }catch(err){setStatus(err.message||String(err),true);}
 }
 
